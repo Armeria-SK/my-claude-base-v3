@@ -9,6 +9,7 @@
 plans/
 dev/
 tasks/
+assets/
 
 # mcp
 .mcp.json
