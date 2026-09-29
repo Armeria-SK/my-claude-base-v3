@@ -1,0 +1,17 @@
+# Session records (todo / lessons / session-state / journal): disk is the store; the whole tasks/ dir
+# stays untracked to avoid PR noise and merge conflicts. Hooks and commands create it on demand.
+/tasks/
+
+# Scratch/temp workspace (CLAUDE.md §0)
+/tmp/
+
+# Plans and product directories
+plans/
+dev/
+tasks/
+
+# mcp
+.mcp.json
+
+# Node deps for harness scripts
+.claude/scripts/node_modules/
