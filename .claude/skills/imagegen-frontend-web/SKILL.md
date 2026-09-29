@@ -15,8 +15,8 @@ user-invocable: true
 
 - **画像生成は `chatgpt-image-gen` スキルで行う**（Claude のブラウザで ChatGPT に生成させ、点検 → 修正 → 保存まで進める）。
 - **1 回 = 1 枚**。複数セクションはそれぞれ別の依頼として順に生成する。このスキルが組んだ英語プロンプトを、`chatgpt-image-gen` の依頼文（主題・構図・画風・入れないもの）にそのまま反映する。
-- **保存**: ダウンロードは利用者の許可が必要。保存先として `./assets/<記述的な名前>.png`（製品ディレクトリで作業中ならその `assets/`。例 `./assets/hero-fintech-teal.png`）を `chatgpt-image-gen` に渡す。利用者が「保存」を1回押した直後に、`chatgpt-image-gen` が `collect-download.mjs` でダウンロードフォルダからそのファイルを見つけて保存先へ移す（`chore` は使わない）。`MOVED` の行が出たら `ls` で存在を確認する。
-- 保存の許可は、最初のセクションが点検に合格した時点（最初の保存の直前）に、全 N 枚分をまとめて1回取る。生成前には取らない（chatgpt-image-gen §5 に準拠）。
+- **保存**: 保存先として `./assets/<記述的な英語のケバブケース名>.png`（製品ディレクトリで作業中ならその `assets/`。例 `./assets/hero-fintech-teal.png`。同名があれば `-2`・`-3` を付けた空き名にする。決め方は chatgpt-image-gen §5）を `chatgpt-image-gen` に渡す。利用者が「保存」を1回押した直後に、`chatgpt-image-gen` が `collect-download.mjs` でダウンロードフォルダからそのファイルを見つけて保存先へ移す（`chore` は使わない）。`MOVED` の行が出たら `ls` で存在を確認する。
+- 保存前の許可確認の質問はしない（画像を作る依頼そのものが許可）。「名前を付けて保存」画面が出たら、そのたびに利用者に「保存」を1回押してもらう（chatgpt-image-gen §5 に準拠）。
 - 生成に失敗・上限到達したときは `chatgpt-image-gen` の報告に従い、利用者に伝えて止まる（別の手段で押し通さない）。
 - このスキルは画像のみ。コード実装は `frontend-design`（直接実装）か `image-to-code`（画像ファースト）へ渡す。
 
@@ -362,7 +362,7 @@ Apply unless the user opts out.
 1. Infer site type, conversion goal, section count (§0); state count and time estimate.
 2. Choose hero scale and one §2 combination; write the style anchor (§10).
 3. Plan each section's anchor, background mode, CTA style; run the §15 variety check on this plan — fixing a plan is cheaper than regenerating images.
-4. Save approval: ask once, covering all N images, when the first section passes inspection (just before its first save) — not before generation.
+4. No save-approval question: the request is the permission. Each time the Save As dialog appears, ask the user to press 保存 (chatgpt-image-gen §5); their click is the final confirmation.
 5. For each section in order: build the prompt (§0 template), hand it to chatgpt-image-gen with the pass conditions, report "Section X of N: <name> — done".
 6. After the set: check continuity (rules in §13, Set checks in §14); fix only a section that breaks it (targeted edit first).
 7. Confirm each image is in assets/ under its descriptive name (`ls`; chatgpt-image-gen moved it there with collect-download.mjs after the user pressed Save, so no chore step); report paths, the style anchor, per-section choices and the two motion-implied picks (image-to-code consumes this).
