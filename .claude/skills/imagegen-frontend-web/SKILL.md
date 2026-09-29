@@ -15,7 +15,7 @@ user-invocable: true
 
 - **画像生成は `chatgpt-image-gen` スキルで行う**（Claude のブラウザで ChatGPT に生成させ、点検 → 修正 → 保存まで進める）。
 - **1 回 = 1 枚**。複数セクションはそれぞれ別の依頼として順に生成する。このスキルが組んだ英語プロンプトを、`chatgpt-image-gen` の依頼文（主題・構図・画風・入れないもの）にそのまま反映する。
-- **保存**: ダウンロードは利用者の許可が必要で、画像はまずダウンロードフォルダに落ちる。保存後、`chore` に移動元と移動先の**完全なパス**を渡して `./assets/`（製品ディレクトリで作業中ならその `assets/`）へ、記述的なファイル名（例 `hero-fintech-teal.png`）で移す。移動後に `ls` で存在を確認する。
+- **保存**: ダウンロードは利用者の許可が必要。保存先として `./assets/<記述的な名前>.png`（製品ディレクトリで作業中ならその `assets/`。例 `./assets/hero-fintech-teal.png`）を `chatgpt-image-gen` に渡す。利用者が「保存」を1回押した直後に、`chatgpt-image-gen` が `collect-download.mjs` でダウンロードフォルダからそのファイルを見つけて保存先へ移す（`chore` は使わない）。`MOVED` の行が出たら `ls` で存在を確認する。
 - 保存の許可は、最初のセクションが点検に合格した時点（最初の保存の直前）に、全 N 枚分をまとめて1回取る。生成前には取らない（chatgpt-image-gen §5 に準拠）。
 - 生成に失敗・上限到達したときは `chatgpt-image-gen` の報告に従い、利用者に伝えて止まる（別の手段で押し通さない）。
 - このスキルは画像のみ。コード実装は `frontend-design`（直接実装）か `image-to-code`（画像ファースト）へ渡す。
@@ -365,7 +365,7 @@ Apply unless the user opts out.
 4. Save approval: ask once, covering all N images, when the first section passes inspection (just before its first save) — not before generation.
 5. For each section in order: build the prompt (§0 template), hand it to chatgpt-image-gen with the pass conditions, report "Section X of N: <name> — done".
 6. After the set: check continuity (rules in §13, Set checks in §14); fix only a section that breaks it (targeted edit first).
-7. Move files to assets/ via chore; report paths, the style anchor, per-section choices and the two motion-implied picks (image-to-code consumes this).
+7. Confirm each image is in assets/ under its descriptive name (`ls`; chatgpt-image-gen moved it there with collect-download.mjs after the user pressed Save, so no chore step); report paths, the style anchor, per-section choices and the two motion-implied picks (image-to-code consumes this).
 Ask a question only when the site type or brand is unclear.
 
 ---
