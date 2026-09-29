@@ -18,7 +18,7 @@ function id8(payload) {
 // Resolve the workspace root defensively: normalize each candidate (path.resolve absorbs
 // drive-relative forms like "D:my-claude-base-v2" — a real v1 incident class), then walk up
 // until a directory containing .claude/ is found. Prevents a malformed cwd from silently
-// planting a journal/ tree in the wrong place.
+// planting a tasks/ tree in the wrong place.
 function projectRoot(payload) {
   const candidates = [process.env.CLAUDE_PROJECT_DIR, payload.cwd, process.cwd()];
   for (let c of candidates) {
@@ -34,11 +34,11 @@ function projectRoot(payload) {
   return path.resolve(payload.cwd || process.cwd());
 }
 
-// tasks/journal/YYYY-MM/DD.md for a given date (default today), creating dir + header on
+// tasks/YYYY-MM/DD.md for a given date (default today), creating dir + header on
 // demand. The journal is ONE global timeline: always under the workspace root's tasks/,
 // never routed per product (dev-mode tasks routing does not apply to it).
 function journalFile(root, d = new Date()) {
-  const dir = path.join(root, 'tasks', 'journal', `${d.getFullYear()}-${two(d.getMonth() + 1)}`);
+  const dir = path.join(root, 'tasks', `${d.getFullYear()}-${two(d.getMonth() + 1)}`);
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${two(d.getDate())}.md`);
   if (!fs.existsSync(file)) {
@@ -60,7 +60,6 @@ function journalPath(root, d) {
   return path.join(
     root,
     'tasks',
-    'journal',
     `${d.getFullYear()}-${two(d.getMonth() + 1)}`,
     `${two(d.getDate())}.md`
   );

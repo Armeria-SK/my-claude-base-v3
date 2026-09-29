@@ -10,7 +10,7 @@
 ---
 
 ## 0. Project Structure
-- `tasks/` — `todo.md` / `lessons.md` / `session-state.md` + `journal/YYYY-MM/DD.md` (append-only: a hook writes session START/END markers, `/save-session` appends the human report and its SAVE marker; never rotate or delete). There is no per-tool-call log — git and the conversation record cover what was done
+- `tasks/` — `todo.md` / `lessons.md` + `YYYY-MM/DD.md` (the journal; resuming = read the newest day file's latest report; append-only: a hook writes session START/END markers, `/save-session` appends the human report and its SAVE marker; never rotate or delete). There is no per-tool-call log — git and the conversation record cover what was done
 - `plans/{slug}/` — `PLAN.md` (+ `deviations.md`) produced by `/plan`
 - `.claude/` — agents / skills / commands / hooks / scripts
 - **Temp files**: `tmp/` under the working folder, always untracked. Never pass POSIX `/tmp/...` paths to Windows-native tools.
@@ -93,7 +93,7 @@ Escalate to the `-deep` twin when: the medium pass is `UNRESOLVED` or `Confidenc
 ---
 
 ## 4. Memory
-- Session start: the SessionStart hook injects `session-state.md` (a 2-line pointer), the latest saved session report (whichever day it was saved), `todo.md`, and `lessons.md`.
+- Session start: the SessionStart hook injects the latest saved session report (from the newest `tasks/YYYY-MM/DD.md` that has one), `todo.md`, and `lessons.md`.
 - **On user correction (immediately)**: append to `tasks/lessons.md` — `### [date] Pattern name` + Trigger / Mistake / Fix / Rule. Only repo-specific or hard-won, actionable rules; nothing Googleable.
 - **Recurring review category (2nd occurrence)**: a role-definition gap, not an implementation slip — record the lesson and propose the agent/skill fix to the user.
 

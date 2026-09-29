@@ -34,24 +34,24 @@ const report = (title, next) => `## 10:00 セッションレポート — ${titl
 
 test('a report saved on an earlier day is injected today', () => {
   const ctx = inject({
-    'tasks/journal/2026-09/27.md': '# 2026-09-27\n\n' + report('前回の結論', 'NEXT-FROM-OLD-DAY'),
-    'tasks/journal/2026-09/29.md': '# 2026-09-29\n\n- 09:00:00 [aaaaaaaa] SESSION START (startup)\n',
+    'tasks/2026-09/27.md': '# 2026-09-27\n\n' + report('前回の結論', 'NEXT-FROM-OLD-DAY'),
+    'tasks/2026-09/29.md': '# 2026-09-29\n\n- 09:00:00 [aaaaaaaa] SESSION START (startup)\n',
   });
   assert.match(ctx, /NEXT-FROM-OLD-DAY/);
-  assert.match(ctx, /tasks\/journal\/2026-09\/27\.md/);
+  assert.match(ctx, /tasks\/2026-09\/27\.md/);
 });
 
 test('the newest report wins, across days and within a file', () => {
   const ctx = inject({
-    'tasks/journal/2026-08/31.md': report('古い', 'OLDEST'),
-    'tasks/journal/2026-09/01.md': report('中', 'MIDDLE-A') + '\n' + report('新しい', 'NEWEST'),
+    'tasks/2026-08/31.md': report('古い', 'OLDEST'),
+    'tasks/2026-09/01.md': report('中', 'MIDDLE-A') + '\n' + report('新しい', 'NEWEST'),
   });
   assert.match(ctx, /NEWEST/);
   assert.doesNotMatch(ctx, /OLDEST|MIDDLE-A/);
 });
 
 test('machine marker lines are not mistaken for a report', () => {
-  const ctx = inject({ 'tasks/journal/2026-09/29.md': '- 09:00:00 [aaaaaaaa] SESSION START (startup)\n' });
+  const ctx = inject({ 'tasks/2026-09/29.md': '- 09:00:00 [aaaaaaaa] SESSION START (startup)\n' });
   assert.match(ctx, /no session report saved yet/);
   assert.doesNotMatch(ctx, /SESSION START/);
 });
@@ -62,14 +62,32 @@ test('no tasks directory at all still injects a well-formed context', () => {
   assert.match(ctx, /no todo recorded yet/);
 });
 
-test('session-state, todo and lessons are injected alongside the report', () => {
+test('todo and lessons are injected alongside the report; a leftover session-state.md is not', () => {
   const ctx = inject({
     'tasks/session-state.md': 'STATE-POINTER',
     'tasks/todo.md': 'TODO-ITEM',
     'tasks/lessons.md': 'LESSON-RULE',
-    'tasks/journal/2026-09/29.md': report('x', 'y'),
+    'tasks/2026-09/29.md': report('x', 'y'),
   });
-  for (const w of ['STATE-POINTER', 'TODO-ITEM', 'LESSON-RULE']) assert.match(ctx, new RegExp(w));
+  for (const w of ['TODO-ITEM', 'LESSON-RULE']) assert.match(ctx, new RegExp(w));
+  assert.doesNotMatch(ctx, /STATE-POINTER|SESSION STATE/);
+});
+
+const reportBlock = (ctx) => ctx.split('=== LATEST SESSION REPORT ===\n')[1].split('\n\n=== ')[0];
+
+test('non-journal entries in tasks/ are never mistaken for a day file', () => {
+  const ctx = inject({
+    'tasks/todo.md': report('todo', 'FROM-TODO'),
+    'tasks/notes/01.md': report('stray dir', 'FROM-NOTES-DIR'),
+    'tasks/2026-10': report('a file named like a month', 'FROM-MONTH-FILE'),
+    'tasks/2026-09/readme.txt': report('not a day file', 'FROM-README'),
+    'tasks/2026-09/30.md/inner.md': report('a dir named like a day', 'FROM-DAY-DIR'),
+    'tasks/2026-09/28.md': report('本物', 'REAL-DAY'),
+  });
+  const block = reportBlock(ctx);
+  assert.match(block, /^\[tasks\/2026-09\/28\.md\]/);
+  assert.match(block, /REAL-DAY/);
+  assert.doesNotMatch(block, /FROM-/);
 });
 
 test('leftovers in tmp/ are reported with size, not deleted', () => {
