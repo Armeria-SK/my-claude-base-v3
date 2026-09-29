@@ -11,7 +11,7 @@ user-invocable: true
 
 ## 運用メモ（最優先）
 
-- **画像の生成・保存・`assets/` への移動は `imagegen-frontend-web` の運用メモに従う**（`chatgpt-image-gen` 経由）。解析は `assets/` に移した PNG を Read で開いて行う（ブラウザのスクリーンショットは縮小されているため使わない）。
+- **画像の生成・保存・`assets/` への移動は `imagegen-frontend-web` の運用メモに従う**（`chatgpt-image-gen` 経由。利用者が「保存」を1回押すと、`collect-download.mjs` が `assets/` へ集める）。解析は `assets/` に移した PNG を Read で開いて行う（ブラウザのスクリーンショットは縮小されているため使わない）。
 - **実装の美学は `frontend-design`（taste）に準拠**: AIバレ集・レイアウト規律・プリフライトを共有する。
 - **ユーザーが読む資料 / スライドには使わない** → `doc` スキルへ。React / Tailwind / CDN / Web フォント前提を資料に持ち込まない。
 
