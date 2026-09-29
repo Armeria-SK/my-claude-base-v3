@@ -1,4 +1,4 @@
-# Session records (todo / lessons / session-state / journal): disk is the store; the whole tasks/ dir
+# Session records (todo / lessons / YYYY-MM/DD.md journal): disk is the store; the whole tasks/ dir
 # stays untracked to avoid PR noise and merge conflicts. Hooks and commands create it on demand.
 /tasks/
 

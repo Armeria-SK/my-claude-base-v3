@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // SessionStart hook: inject the resume context into Claude's context.
-//   session-state.md (2-line pointer) + the latest session report (from any day's journal) + todo.md + lessons.md
+//   the latest session report (from the newest tasks/YYYY-MM/DD.md that has one) + todo.md + lessons.md
 // Input: Claude Code hook event JSON on stdin. Fail-open.
 //
 // Budget: combined TOTAL_CAP. On overflow the lowest-priority block is trimmed first
-// (lessons -> journal -> todo -> session-state); each block keeps at least MIN_FLOOR.
-// lessons and journal keep their tail (newest entries), the others keep their head.
+// (lessons -> report -> todo); each block keeps at least MIN_FLOOR.
+// lessons keeps its tail (newest entries), the others keep their head.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -16,6 +16,8 @@ const MIN_FLOOR = 2 * 1024;
 const JOURNAL_CAP = 4 * 1024;
 const REPORT_HEADING = /^## \d\d:\d\d .*$/gm; // "## HH:MM セッションレポート — ..." written by /save-session
 const SCAN_DAYS = 30; // how many journal day-files back to look for a report
+const MONTH_DIR = /^\d{4}-\d{2}$/; // tasks/YYYY-MM/
+const DAY_FILE = /^\d{2}\.md$/; // tasks/YYYY-MM/DD.md
 
 let data = '';
 process.stdin.on('data', (c) => (data += c));
@@ -30,7 +32,6 @@ process.stdin.on('end', () => {
   const tasks = path.join(root, 'tasks');
 
   const blocks = [
-    { label: 'SESSION STATE', file: path.join(tasks, 'session-state.md'), empty: '(no previous session state)', keep: 'head' },
     { label: 'TODO', file: path.join(tasks, 'todo.md'), empty: '(no todo recorded yet)', keep: 'head' },
     { label: 'LATEST SESSION REPORT', empty: '(no session report saved yet)', keep: 'head', load: () => latestReport(tasks) },
     { label: 'LESSONS', file: path.join(tasks, 'lessons.md'), empty: '(no lessons recorded yet)', keep: 'tail' },
@@ -95,14 +96,21 @@ function tmpLeftovers(dir) {
   );
 }
 
-// The report is the single home of "next steps / on hold". Walk the journal day-files newest
-// first and return the last "## HH:MM" report section of the first file that has one, tagged with
-// its path — so a report saved yesterday (or last week) is still injected today.
+// The report is the single home of "next steps / on hold". Walk the day files tasks/YYYY-MM/DD.md
+// newest first and return the last "## HH:MM" report section of the first file that has one, tagged
+// with its path — so a report saved yesterday (or last week) is still injected today. Everything
+// else in tasks/ (todo.md, lessons.md, stray files or dirs) is not a journal entry and is skipped.
 function latestReport(tasks) {
+  const names = (dir, keep) =>
+    fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter(keep)
+      .map((e) => e.name)
+      .sort()
+      .reverse();
   const files = [];
-  const jdir = path.join(tasks, 'journal');
-  for (const m of fs.readdirSync(jdir).sort().reverse()) {
-    for (const d of fs.readdirSync(path.join(jdir, m)).sort().reverse()) files.push(path.join(jdir, m, d));
+  for (const m of names(tasks, (e) => e.isDirectory() && MONTH_DIR.test(e.name))) {
+    for (const d of names(path.join(tasks, m), (e) => e.isFile() && DAY_FILE.test(e.name))) files.push(path.join(tasks, m, d));
     if (files.length >= SCAN_DAYS) break;
   }
   for (const f of files.slice(0, SCAN_DAYS)) {

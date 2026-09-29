@@ -41,7 +41,7 @@
 //     NOT treated as a redirect. Exempt when the resolved path, taken RELATIVE TO THE WORKSPACE
 //     ROOT (not the absolute filesystem path -- see checkGitRedirectOverwrite()), has a
 //     `tmp`/`temp` path segment (CLAUDE.md §0 scratch area; real precedent:
-//     tasks/journal/2026-08/03.md lines 748 and 888, an executor running `git show <rev>:<path> >
+//     v2's tasks/journal/2026-08/03.md lines 748 and 888, an executor running `git show <rev>:<path> >
 //     tmp/<name>.js` to diff an old revision). A target outside the workspace root gets no
 //     exemption, and reparse-point redirection (junctions/symlinks) is resolved before the segment
 //     test. When paren-entered, a glued closing `)` landing on the LAST word of the subcommand's

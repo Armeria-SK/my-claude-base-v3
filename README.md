@@ -29,7 +29,7 @@ claude        # このフォルダで起動。エージェント定義は起動�
   - 画像・デザイン・資料: `chatgpt-image-gen`（Claude のブラウザで ChatGPT に画像を作らせ、点検・修正まで。保存は内蔵ブラウザでは利用者が「保存」を1回押し、押したあとファイルは `assets/` などへ自動で集める）/ `imagegen-frontend-web`（サイト用の参考画像のディレクション）/ `image-to-code`（参考画像を作ってから忠実に実装）/ `frontend-design`（AI っぽく見えない画面づくりの規則集）/ `doc`（画像も埋め込んだ 1 ファイル完結の HTML 資料）
 - **commands（2種）** — `/save-session`（区切りで報告と再開メモを残す）/ `/resume-session`（記録と git を突き合わせて再開）
 - **hooks（9本）** — 危険操作を止めるもの（破壊的な git・ファイル削除・秘密情報の読み取り・`--no-verify`・main への直接コミット・コミット前の秘密/デバッグ混入）、モデル階層の強制、セッション開始時の再開情報の注入と、開始/終了/保存の目印の記録（ツール実行ごとのログは取りません）
-- **tasks/** — todo / lessons / session-state / journal（git 追跡外）
+- **tasks/** — todo / lessons / `YYYY-MM/DD.md`（日ごとのジャーナル。再開は最新の日を読む）（git 追跡外）
 
 ## 権限の扱い
 `settings.json` では権限モードを固定していません（v2 は `bypassPermissions`）。フックによる安全装置は権限モードに関係なく働きます。確認ダイアログを減らしたい場合は、ご自身で `defaultMode` を選んでください。

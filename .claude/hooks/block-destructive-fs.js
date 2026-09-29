@@ -30,7 +30,7 @@
 //     1. What's newly allowed: any rm/shred target below the workspace root, any leaf name.
 //     2. What's still blocked, and why: outside the root; the root itself; targets this hook
 //        cannot resolve (globs, $-expansion, ~) — see BLOCKED cases above.
-//     3. Recovery fact the user already accepted when making this ruling: tasks/journal/**,
+//     3. Recovery fact the user already accepted when making this ruling: tasks/YYYY-MM/**,
 //        tasks/*.md, plans/**, and dev/** are all gitignored (.gitignore) — an
 //        rm under this new policy can delete any of them with NO git history to recover from.
 //
@@ -337,7 +337,7 @@ function checkCommand(command, cwd, root) {
         return (
           `BLOCKED: "${cmd}" の削除対象「${unquoted}」（解決後のパス:「${abs}」）はワークスペース` +
           `「${root}」の外です。ワークスペース直下の削除は許可されていますが、外側は削除できません。` +
-          `パスを確認し、ワークスペース内を指定し直してください。なお tasks/journal・tasks/history・` +
+          `パスを確認し、ワークスペース内を指定し直してください。なお tasks/YYYY-MM・tasks/history・` +
           `tasks/*.md・plans/・dev/ は git 管理外のため、削除すると git 履歴からは復元できません` +
           `（CLAUDE.md §1.5）。`
         );
