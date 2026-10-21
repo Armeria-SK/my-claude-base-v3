@@ -80,11 +80,27 @@ function build() {
   }
 }
 
+// Git Bash spellings of <REPO> (win32 only; absent elsewhere, where the rows using them are skipped):
+// <REPO_MSYS> /d/..., <REPO_MSYS_UPPER> /D/..., and two spellings that are NOT drives in Git Bash:
+// <REPO_CYGDRIVE> /cygdrive/d/... (Git for Windows has no /cygdrive mount) and <REPO_MSYS_DD> /dd/....
+function msysSpellings() {
+  const m = /^([A-Za-z]):(\/.*)$/.exec(slash(dirs.REPO));
+  if (process.platform !== 'win32' || !m) return {};
+  const d = m[1].toLowerCase();
+  return {
+    REPO_MSYS: `/${d}${m[2]}`,
+    REPO_MSYS_UPPER: `/${d.toUpperCase()}${m[2]}`,
+    REPO_CYGDRIVE: `/cygdrive/${d}${m[2]}`,
+    REPO_MSYS_DD: `/${d}${d}${m[2]}`,
+  };
+}
+
 function substitute(raw) {
+  const subs = { ...Object.fromEntries(Object.entries(dirs).map(([k, v]) => [k, slash(v)])), ...msysSpellings() };
   // longest names first so <SANDBOX_GIT_MAIN> is not eaten by <SANDBOX_GIT> or <SANDBOX>
-  return Object.keys(dirs)
+  return Object.keys(subs)
     .sort((a, b) => b.length - a.length)
-    .reduce((s, k) => s.split(`<${k}>`).join(slash(dirs[k])), raw);
+    .reduce((s, k) => s.split(`<${k}>`).join(subs[k]), raw);
 }
 
 function run(row) {
