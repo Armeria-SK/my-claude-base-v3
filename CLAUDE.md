@@ -13,6 +13,8 @@
 - `tasks/` — `todo.md` / `lessons.md` + `YYYY-MM/DD.md` (the journal; resuming = read the newest day file's latest report; append-only: a hook writes session START/END markers, `/save-session` appends the human report and its SAVE marker; never rotate or delete). There is no per-tool-call log — git and the conversation record cover what was done
 - `plans/{slug}/` — `PLAN.md` (+ `deviations.md`) produced by `/plan`
 - `.claude/` — agents / skills / commands / hooks / scripts
+- `dev/<product>/` — **every product under development lives here, one folder per product** (user ruling 2026-10-21). Never create product files at the workspace root.
+  - `dev/` is gitignored by this repo; each `dev/<product>/` is its **own independent git repository** (`git init` inside it, its own branches / remote / PRs). Product commits go to that repo, never to this one. §3's Git Workflow applies inside each product repo.
 - **Temp files**: `tmp/` under the working folder, always untracked. Never pass POSIX `/tmp/...` paths to Windows-native tools.
   - **Delete after use (user ruling 2026-09-29; v2's `tmp/` grew unchecked).** Whoever creates something in `tmp/` deletes it once the task that needed it is done, before reporting done. Put each task's files under `tmp/<topic>/` so the whole folder can go at once. `tmp/` is not storage: anything worth keeping (a repro test, a finding, a script) moves into the project or the report first.
   - Delete only what you created. Another session may be using the rest; if unknown files are there, report them instead of deleting.
