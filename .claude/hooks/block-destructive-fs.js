@@ -62,6 +62,53 @@
 // "<root>-other" is correctly seen as outside), case-folded on win32 only (case-insensitive filesystem
 // there; POSIX stays case-sensitive).
 //
+// MSYS drive paths (added 2026-10-21): on win32 the Bash tool is Git Bash, where `/d/foo` means
+// `D:\foo`, but path.resolve reads it as `\d\foo` on the current drive, so a real in-workspace target
+// was wrongly blocked as outside. Before resolving, rm/shred targets of the form `/X[/...]` (X =
+// exactly one ASCII letter, either case) are rewritten to `X:\...` — see MSYS_DRIVE / msysToWin below.
+// Principle: translate only when the real Git Bash target is provably the rewritten path; when in
+// doubt, leave the target untouched so it resolves as before (outside the root -> blocked).
+//   - Only when process.platform === 'win32' AND the payload's tool_name === 'Bash' (missing or any
+//     other tool_name: no rewrite). The PowerShell tool shares this hook, and there `/d/foo` really is
+//     `\d\foo` on the current drive, so rewriting it would wrongly allow `rm -r /d/<workspace>/tmp/x`
+//     whose real target is `D:\d\<workspace>\tmp\x`.
+//   - `/cygdrive/X/...` is NOT translated: Git for Windows mounts drives directly under `/` (see
+//     `mount`), so `/cygdrive/d/...` is an ordinary path under the Git install dir, not drive D.
+//   - ALLOWLIST: only a target whose text after `/X/` consists solely of plain path characters is
+//     translated, i.e. ASCII `[A-Za-z0-9_]` and `. - / + @ , = % #` (see MSYS_DRIVE). Each of those is
+//     literal in an unquoted bash word (checked in Git Bash, also with extglob on): `.` and `-` are
+//     ordinary name characters (`..` is still normalized by path.resolve); `+ @ ,` only act inside an
+//     extglob `+(..)`/`@(..)` or a `{a,b}` brace, and parentheses and braces are not on the list; `=` and
+//     `%` are only special in `$`-expansions or assignment-shaped words, which the `$` check and the
+//     leading `/` rule out; `#` only starts a comment at the beginning of a word, never inside one. Any
+//     other character means "no translation": the target resolves as before, outside the root, and is
+//     blocked. This covers, without enumerating them, backslash (Git Bash drops an unquoted `\`, so
+//     `/d/<root>\-other` really deletes the sibling `<root>-other`), quotes and braces (quote removal and
+//     brace expansion are not modelled here: `/d/<root>/tmp/{x,../../y}` and `/d/<root>/tmp/.""./.""./x`
+//     reach `..`), backtick and `(` `)` (command substitution / subshell), `! ; & | < > ^ ~ : *` and
+//     space, and everything non-ASCII. Space is left out on purpose: a token only contains one when it
+//     was quoted, and quote handling is exactly what this hook does not model. The identical gaps for
+//     `D:/...` and relative targets are pre-existing and tracked separately; the translation must not
+//     extend them to spellings that were blocked before.
+//   - STANDALONE WORD: a target is translated only if every occurrence of its text in the segment is a
+//     whole word -- start or whitespace before it, whitespace or end after it, optionally wrapped in one
+//     matching pair of quotes. The tokenizer splits `"/d/<root>/tmp/"../../x` into two arguments while
+//     bash glues them into one path (`/d/<root>/tmp/../../x`), so a glued occurrence (including one that
+//     merely repeats an otherwise standalone target) leaves the target untranslated and blocked.
+//     A target that is also the leading text of another argument (`/d/<root>/tmp /d/<root>/tmp/x`) counts
+//     as glued too: a fail-closed false positive, accepted for simplicity.
+//   - The whole command is NOT translated when (a) any bash/sh segment has a `/` or `\` in its text
+//     before the first `-c` token (an explicit path such as `/c/Windows/System32/bash.exe -c '...'`, or a
+//     path in a leading env assignment like `FOO=/x bash -c ...`): that may be WSL's bash, where `/d/...`
+//     is a Linux path; or (b) the command string contains `PATH=` anywhere, since a changed PATH can put
+//     another bash first. Both checks over-approximate on purpose (false positives only fall back to the
+//     old blocking). A bare `bash -c` / `sh -c` is Git Bash's own and keeps the translation. Not covered
+//     here: lib/parse-cmd.js does not peel env options (`env -u X rm ...`, `env FOO=1 bash -c ...`), so
+//     such commands are never parsed into rm/bash segments at all -- a pre-existing gap, tracked separately.
+// The rewrite only runs after the `~` / glob / `$` checks and is followed by the same containment test,
+// so a drive root (`/d`, `/d/`), another drive (`/c/Windows`), `..` escapes and the workspace root itself
+// stay blocked. The other sections (dd, truncate, PowerShell cmdlets) keep FORBIDDEN_TARGET unchanged.
+//
 // Input: Claude Code hook event JSON on stdin
 // Output: matching command -> message on stderr + exit 2 (block); otherwise exit 0
 
@@ -169,10 +216,38 @@ function foldCase(p) {
   return process.platform === 'win32' ? p.toLowerCase() : p;
 }
 
+// Git Bash (MSYS) spells drive D: as /d. Exactly one letter, so /dd/x and /d-x are ordinary
+// directories, not drives. $1 = drive letter, $2 = the rest after the slash (may be empty). The rest
+// is an allowlist of plain path characters (see header): any other character means no match at all.
+const MSYS_DRIVE = /^\/([A-Za-z])(?:\/([\w.\-\/+@,=%#]*))?$/;
+
+// "/d/foo" -> "D:\foo", "/d" and "/d/" -> "D:\"; anything else is returned unchanged.
+function msysToWin(target) {
+  const m = MSYS_DRIVE.exec(target);
+  return m ? `${m[1].toUpperCase()}:\\${m[2] || ''}` : target;
+}
+
+// True for a bash/sh segment with a / or \ anywhere before its first -c token (whole text if none):
+// an explicit path, or a path in an env option/assignment -- it may be WSL's bash, which reads /d/x
+// as a Linux path. Over-approximates on purpose (see header).
+function isPathInvokedShell({ cmd, raw }) {
+  if (cmd !== 'bash' && cmd !== 'sh') return false;
+  const c = raw.search(/\s-c(\s|$)/);
+  return /[\\/]/.test(c === -1 ? raw : raw.slice(0, c));
+}
+
+// True when every occurrence of `text` in `raw` is a whole word (see header, STANDALONE WORD).
+function isStandaloneWord(raw, text) {
+  const esc = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const standalone = raw.match(new RegExp(`(?<=^|\\s)(["']?)${esc}\\1(?=\\s|$)`, 'g')) || [];
+  return standalone.length === raw.split(text).length - 1;
+}
+
 // Resolve `target` against the command's cwd, then classify the result against the workspace root.
 // `abs` keeps real casing (for messages); outside/isRootItself are decided on folded case.
-function classifyRmTarget(root, cwd, target) {
-  const abs = path.resolve(cwd, target);
+// `msys`: translate Git Bash drive paths first (win32 + Bash tool only, see header).
+function classifyRmTarget(root, cwd, target, msys) {
+  const abs = path.resolve(cwd, msys ? msysToWin(target) : target);
   const { rel, outside } = normalizeRel(foldCase(root), foldCase(abs));
   return { abs, outside, isRootItself: !outside && rel === '' };
 }
@@ -194,7 +269,8 @@ process.stdin.on('end', () => {
   const root = projectRoot(payload);
   const cwd = payload.cwd || root;
 
-  const verdict = checkCommand(command, cwd, root);
+  const msys = process.platform === 'win32' && payload.tool_name === 'Bash';
+  const verdict = checkCommand(command, cwd, root, msys);
   if (verdict) {
     console.error(verdict);
     process.exit(2);
@@ -202,8 +278,10 @@ process.stdin.on('end', () => {
   process.exit(0);
 });
 
-function checkCommand(command, cwd, root) {
-  for (const { cmd, args, raw } of segments(command)) {
+function checkCommand(command, cwd, root, msys) {
+  const segs = segments(command);
+  const useMsys = msys && !command.includes('PATH=') && !segs.some(isPathInvokedShell);
+  for (const { cmd, args, raw } of segs) {
     // --- find ... -delete ---------------------------------------------------
     if (cmd === 'find') {
       if (args.includes('-delete')) {
@@ -332,7 +410,7 @@ function checkCommand(command, cwd, root) {
         );
       }
 
-      const { abs, outside, isRootItself } = classifyRmTarget(root, cwd, unquoted);
+      const { abs, outside, isRootItself } = classifyRmTarget(root, cwd, unquoted, useMsys && isStandaloneWord(raw, unquoted));
       if (outside) {
         return (
           `BLOCKED: "${cmd}" の削除対象「${unquoted}」（解決後のパス:「${abs}」）はワークスペース` +
