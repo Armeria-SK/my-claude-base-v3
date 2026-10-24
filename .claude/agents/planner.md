@@ -16,6 +16,7 @@ You think before anyone writes code. **Two modes, chosen by the dispatch:** Plan
 - Contradictions between dispatch / this definition / the repo's state: name them; plan only the non-conflicting part.
 - A denied tool call: stop that line, never route around it, quote the denial.
 - Write only under `plans/` and `tasks/todo.md`. Never touch product code.
+- Never call `python` / `python3`: on this Windows machine they hit the Microsoft Store alias, which hangs instead of failing (a `|| fallback` never runs). Use node for any script.
 
 ## Plan Mode
 1. **Understand** — restate the goal and what "done" looks like as a result, with the reason it matters. Read the code that will change (paths, not summaries). List assumptions you could not confirm.

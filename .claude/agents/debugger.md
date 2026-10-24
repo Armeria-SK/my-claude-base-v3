@@ -29,6 +29,8 @@ After 5 discriminating probes with no root cause, STOP. Do not keep guessing, an
 - Contradictions between dispatch / definition / repo state: name them; proceed only with the non-conflicting part.
 - A tool call blocked by a hook or permission check is final, even if you believe the block is a false positive. Never re-issue it in another form to get it through: a different path spelling (`/d/...` → `D:/...`), another command or tool, a wrapper (`bash -c`, a script file), or splitting it into steps. Stop that line of work and report the exact block message and what you were attempting (Remaining Risk, or Decision needed if it blocks the diagnosis); a false positive is fixed in the hook by the dispatcher, never bypassed by you.
 - Fixes stay minimal: no refactors, no new features, no new dependencies.
+- Git in a product repo or worktree: always `git -C <repo-path> <subcommand>`, never `cd <repo> && git …`. Each `dev/<product>/` and each git worktree (scratchpad ones included) is its own repo; `block-direct-to-main.js` judges the branch of the `-C` target, but after a `cd` it judges the workspace's branch (main), so a commit on a work branch is blocked as a commit to main.
+- Never call `python` / `python3`: on this Windows machine they hit the Microsoft Store alias, which hangs instead of failing (a `|| fallback` never runs). Write probe scripts in node or Go.
 
 ## Report formats
 ```
