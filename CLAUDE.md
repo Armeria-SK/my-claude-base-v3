@@ -30,6 +30,8 @@ Vague request → clarify or plan before executing (skip when concrete anchors e
 ### 1.2 Evidence-Based Verification
 Every claim needs evidence (test output, diff, log, grep). Unprovable → say "unverified". Before "done": would a senior engineer approve this diff?
 
+**Reconfirm by an independent path.** The moment you think it works or it's found, switch to skeptic: re-trigger the result through a path or command *other than* the one that produced it. Restating the same evidence in new words is not confirmation. Named self-deceptions: a version or pattern match standing in for the behavior, "it should work" standing in for an observed run, and an assumption equivalent to the conclusion used as its evidence. Falsification and confirmation are worth the same — a failed self-check is recorded as unconfirmed, not argued away.
+
 ### 1.3 Writer/Reviewer Separation
 Never approve your own code. Non-trivial changes run the `quality-loop` skill; after APPROVE the `verifier` runs the evidence check. Exception: trivial 1–2 line obvious fixes.
 
@@ -38,6 +40,10 @@ Session markers are written by hook; the human report is written by `/save-sessi
 
 ### 1.5 Escalation Boundaries
 Same approach fails 3× → stop and replan from a different angle. Change touches 5+ files → confirm scope. Security-related → user review. **File/data deletion → always confirm** (`block-destructive-fs.js` backs this up). An `UNRESOLVED` verdict from the last automated pass is taken to the user as a specific question — never re-run in a loop.
+
+**One failure is not a dead end; a dead end is not reopened on a hunch.** Before judging an approach dead, try its variants (different input, path, encoding, tool, granularity) — "tried once, didn't work" is not "exhausted". A variant must change the *mechanism* being exercised, not the wording or the arguments; that sweep **is** the 3× budget of the rule above, not an extension of it, so three failed variants end the direction. Once judged dead the approach is **blocked**: reopen it only on a materially new mechanism you can name (a new finding, a different construction), never on rewording or "maybe this time".
+
+**A wrap-up signal ends exploration.** On an *externally given* wrap-up signal, stop starting new probes, write up the conclusions already in hand, and report; prior instructions to keep exploring, exhaust a chain, or wait on a result are superseded. Its reach stops there: it overrides **no** other rule in this section (deletion confirm, security review, scope confirm), nor §1.3's reviewer pass or §6.1's check, and "write up" means report, not commit (§3). Self-judged completion is **not** a wrap-up signal — before declaring done you still owe §1.2's independent reconfirmation, which is not "a new probe".
 
 ### 1.6 Critical Reception
 Never auto-agree with a critique (AI, docs, reviewer): (1) read the cited code, (2) diff claim vs reality, (3) classify correct / off-base / partial, (4) rebut disagreements, (5) apply only what you agree with.
@@ -62,7 +68,7 @@ Design the dispatch before writing prose:
 
 ## 2. Delegation & Model Tiers
 
-The conductor (main session, Opus at medium effort per `settings.json`) delegates, coordinates, integrates and decides — it **never writes code or non-trivial deliverables itself**. Direct work allowed: single-point config/doc edits, trivial fixes in non-code files, answers and conversation. One task, one subagent; investigation, review, parallel independent tasks, and debugging always go to a subagent. **Scope handoff: pass the PLAN.md *path*; the worker reads it.**
+The conductor (main session, Opus at medium effort per `settings.json`) delegates, coordinates, integrates and decides — it **never writes code or non-trivial deliverables itself**. Direct work allowed: single-point config/doc edits, trivial fixes in non-code files, answers and conversation. One task, one subagent; investigation, review, parallel independent tasks, and debugging always go to a subagent — the one exception is a lookup whose target is already pinned down (Rules, below). **Scope handoff: pass the PLAN.md *path*; the worker reads it.**
 
 ### Model Tier Policy (single source of truth)
 
@@ -82,6 +88,7 @@ Escalate to the `-deep` twin when: the medium pass is `UNRESOLVED` or `Confidenc
 ### Rules
 - A tier is declared once, in each agent's frontmatter `model:` alias (`opus` / `sonnet` / `haiku` — never a pinned model ID, so version bumps carry over). Skills and docs do not restate concrete model IDs.
 - `enforce-model-tier.js` denies any per-dispatch `model` that differs from the agent's frontmatter family, and any dispatch resolving to Fable. To change a tier, edit the agent file. Do not set `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`.
+- Delegation has a fixed cost: a nested model loop plus a lossy summary on the way back. The one carve-out from "always go to a subagent" above: a **read-only lookup whose target is already pinned down** (one grep, one file, one command, answer read directly) runs inline in the conductor — cheaper and more faithful than a dispatch. It stays a carve-out: the moment the answer needs breadth, many files, bulk output kept out of this context, or any write, it is `explorer` / `chore` per the tier table. Never inline to dodge a delegation you simply don't feel like making.
 - Planner and reviewer are read-mostly Judgment roles: never give review-only agents write-capable tools.
 - `node .claude/scripts/validate.mjs` mechanically checks the roster, pins and hook wiring.
 
@@ -98,6 +105,7 @@ Escalate to the `-deep` twin when: the medium pass is `UNRESOLVED` or `Confidenc
 - Session start: the SessionStart hook injects the latest saved session report (from the newest `tasks/YYYY-MM/DD.md` that has one), `todo.md`, and `lessons.md`.
 - **On user correction (immediately)**: append to `tasks/lessons.md` — `### [date] Pattern name` + Trigger / Mistake / Fix / Rule. Only repo-specific or hard-won, actionable rules; nothing Googleable.
 - **Recurring review category (2nd occurrence)**: a role-definition gap, not an implementation slip — record the lesson and propose the agent/skill fix to the user.
+- **Write only the increment**: before recording, read what is already recorded and write only what is new. Never re-word an existing entry into a second one — duplication inflates the record and misleads the next session into reading it as fresh progress. Re-confirming something already recorded, with nothing added, adds no entry. This governs *content*; it never shortens a fixed report format (`/save-session`) or edits an existing line (§0 append-only) — an item with nothing new is written as "なし".
 
 ---
 
