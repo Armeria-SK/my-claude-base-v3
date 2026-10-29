@@ -131,7 +131,7 @@ process.stdin.on('end', () => {
       typeof verdict === 'string'
         ? `BLOCKED: ${verdict}.\n` +
             `このリポジトリは main に直接コミット／プッシュしません。作業用ブランチで作業し、` +
-            `GitHub の取り込み提案(PR)経由で main に反映してください（例: git switch -c <topic>-$(date +%F) main）。`
+            `GitHub の取り込み提案(PR)経由で main に反映してください（例: git switch -c $(date +%F)-<topic> main）。`
         : verdict.message
     );
     process.exit(2);

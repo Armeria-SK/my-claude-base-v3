@@ -15,8 +15,8 @@ user-invocable: true
 
 - **画像生成は `chatgpt-image-gen` スキルで行う**（Claude のブラウザで ChatGPT に生成させ、点検 → 修正 → 保存まで進める）。
 - **1 回 = 1 枚**。複数セクションはそれぞれ別の依頼として順に生成する。このスキルが組んだ英語プロンプトを、`chatgpt-image-gen` の依頼文（主題・構図・画風・入れないもの）にそのまま反映する。
-- **保存**: 保存先として `./assets/<記述的な英語のケバブケース名>.png`（製品ディレクトリで作業中ならその `assets/`。例 `./assets/hero-fintech-teal.png`。同名があれば `-2`・`-3` を付けた空き名にする。決め方は chatgpt-image-gen §5）を `chatgpt-image-gen` に渡す。利用者が「保存」を1回押した直後に、`chatgpt-image-gen` が `collect-download.mjs` でダウンロードフォルダからそのファイルを見つけて保存先へ移す（`chore` は使わない）。`MOVED` の行が出たら `ls` で存在を確認する。
-- 保存前の許可確認の質問はしない（画像を作る依頼そのものが許可）。「名前を付けて保存」画面が出たら、そのたびに利用者に「保存」を1回押してもらう（chatgpt-image-gen §5 に準拠）。
+- **保存**: 保存先として `./assets/<記述的な英語のケバブケース名>.png`（製品の作業中は `dev/<製品>/assets/`。例 `./assets/hero-fintech-teal.png`。同名があれば `-2`・`-3` を付けた空き名にする。決め方は chatgpt-image-gen §5）を `chatgpt-image-gen` に渡す。利用者が「保存」を1回押した直後に、`chatgpt-image-gen` が `collect-download.mjs` でダウンロードフォルダからそのファイルを見つけて保存先へ移す。`MOVED` の行が出たら `ls` で存在を確認する。
+- 始める前に 1 回だけ、全部の画像を保存してよいかをまとめて聞く。そのあとは「名前を付けて保存」画面が出るたびに、利用者に「保存」を1回押してもらう（chatgpt-image-gen §5 に準拠）。
 - 生成に失敗・上限到達したときは `chatgpt-image-gen` の報告に従い、利用者に伝えて止まる（別の手段で押し通さない）。
 - このスキルは画像のみ。コード実装は `frontend-design`（直接実装）か `image-to-code`（画像ファースト）へ渡す。
 
@@ -30,8 +30,8 @@ You art-direct website design reference images that a developer or coding model 
 ## 0. Output: one section per image, via chatgpt-image-gen
 Generate one landscape image per section, each as its own chatgpt-image-gen request. One section per frame keeps text, spacing and buttons large enough to read and build from; a tall whole-page image shrinks everything below usefulness.
 - Count: use the user's number. If none: hero → 1; landing page / product page / portfolio → 6 (§12); full website / marketing site → 8. Before starting, state the count and rough cost ("6 images, one per section, about 1–2 min each plus a check; I'll ask once to save them all").
-- Aspect: wide landscape, 16:9, desktop web page section (a hero may use up to ~21:9 if the composition needs it). ChatGPT Images (2.5 as of 2026-09) supports wide landscape including 16:9; the pass condition is landscape orientation, so a ratio that is slightly off is not worth a fix round.
-- Order: hero first. Generate the whole set in the same ChatGPT conversation and repeat the style anchor (§10) verbatim in every prompt. For sections after the first, override chatgpt-image-gen: skip its §1 navigate to https://chatgpt.com/ (that opens a new chat), stay on the current conversation tab and confirm by screenshot that the previous section is visible; when inspecting (its §4) and downloading (its §5), use the newest image in the conversation. Images 2.5 keeps context across turns of one conversation, which is what makes the set read as one site.
+- Aspect: wide landscape, 16:9, desktop web page section (a hero may use up to ~21:9 if the composition needs it). ChatGPT's image model supports wide landscape including 16:9; the pass condition is landscape orientation, so a ratio that is slightly off is not worth a fix round.
+- Order: hero first. Generate the whole set in the same ChatGPT conversation and repeat the style anchor (§10) verbatim in every prompt. For sections after the first, override chatgpt-image-gen: skip its §1 navigate to https://chatgpt.com/ (that opens a new chat), stay on the current conversation tab and confirm by screenshot that the previous section is visible; when inspecting (its §4) and downloading (its §5), use the newest image in the conversation. ChatGPT keeps context across turns of one conversation, which is what makes the set read as one site.
 - Progress labels ("Section 2 of 6: Trust bar") go in your message to the user, never in the prompt, or ChatGPT may render them into the image.
 - On a usage limit or refusal, stop and report which sections are done and which remain. Don't merge the remaining sections into one image to "finish".
 
@@ -39,7 +39,7 @@ Pass conditions to hand chatgpt-image-gen (its 合格条件):
 - Fatal: shows only this section, flat and full-width (no browser frame or laptop mockup); landscape; headline and CTA text exactly as quoted; palette matches the style anchor; none of the "do not include" items.
 - Minor, report but don't loop: garbled body copy, subheadline or small labels (placeholders); small UI inconsistencies.
 - Up to 3 fix points per round (chatgpt-image-gen rule): fix hierarchy and composition before decoration.
-- Fix by targeted edits in the same conversation ("change only X, keep everything else") rather than regenerating from scratch; Images 2.5 is built for localized edits and keeps earlier edits intact.
+- Fix by targeted edits in the same conversation ("change only X, keep everything else") rather than regenerating from scratch; localized edits keep earlier edits intact.
 - In-image text: quote exactly only the headline, subheadline (≤12 words) and CTA labels; describe everything else as "short placeholder copy". Image models garble small text, and requiring exact strings everywhere causes fix loops. For Japanese copy, keep in-image Japanese to the headline and CTA.
 - Layout pinning: for a section whose layout matters, the user or conductor may give ChatGPT a rough wireframe (an uploaded image, or @Sketch) to pin the composition.
 
@@ -96,6 +96,8 @@ Choose one option per category from the prompt and commit to it across the set. 
 2. Deep Dark Mode: charcoal / graphite / zinc, elegant glow only when justified.
 3. Bold Studio Solid: strong controlled color fields (oxblood, royal blue, forest, vermilion, emerald) with crisp contrasting UI.
 4. Quiet Premium Neutral: bone, sand, taupe, stone, smoke; muted contrast, restrained luxury.
+
+Cream / paper and bone / sand are the defaults this model reaches for: pick them only when the brief asks for warmth, and for premium-consumer briefs never the beige + brass + espresso family (frontend-design §4.2).
 
 ### Background Character (choose 1)
 1. Subtle technical grid / dotted field
@@ -362,10 +364,10 @@ Apply unless the user opts out.
 1. Infer site type, conversion goal, section count (§0); state count and time estimate.
 2. Choose hero scale and one §2 combination; write the style anchor (§10).
 3. Plan each section's anchor, background mode, CTA style; run the §15 variety check on this plan — fixing a plan is cheaper than regenerating images.
-4. No save-approval question: the request is the permission. Each time the Save As dialog appears, ask the user to press 保存 (chatgpt-image-gen §5); their click is the final confirmation.
+4. Saving was approved once, before the run (the batched question). Each time the Save As dialog appears, ask the user to press 保存 (chatgpt-image-gen §5); their click is the final confirmation.
 5. For each section in order: build the prompt (§0 template), hand it to chatgpt-image-gen with the pass conditions, report "Section X of N: <name> — done".
 6. After the set: check continuity (rules in §13, Set checks in §14); fix only a section that breaks it (targeted edit first).
-7. Confirm each image is in assets/ under its descriptive name (`ls`; chatgpt-image-gen moved it there with collect-download.mjs after the user pressed Save, so no chore step); report paths, the style anchor, per-section choices and the two motion-implied picks (image-to-code consumes this).
+7. Confirm each image is in assets/ under its descriptive name (`ls`; chatgpt-image-gen's collect-download.mjs put it there); report paths, the style anchor, per-section choices and the two motion-implied picks (image-to-code consumes this).
 Ask a question only when the site type or brand is unclear.
 
 ---

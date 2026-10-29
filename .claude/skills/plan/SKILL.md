@@ -24,7 +24,7 @@ Any heavy signal → heavy. All light → light. Split → ask the user one plai
 Skip planning entirely when concrete anchors already exist (file paths, function names, issue numbers) and the change is small.
 
 ## Light path — requirements only (no implementation)
-Score clarity 0–100% on Goal (40) · Constraints (20) · Success criteria (25) · Context (15). Ask **one question per round**, about the lowest-scoring dimension, with concrete options (max 5 rounds). From round 3 challenge the request: *is it needed? what is the bare-minimum MVP? what happens in edge case X?* If a stated premise is factually wrong, object at once with evidence and a concrete alternative — the user rules, record the ruling. Stop at ≤20% ambiguity or after 5 rounds.
+Judge how settled each of Goal · Constraints · Success criteria · Context is. Ask **one question per round**, about the least settled one, with concrete options (max 5 rounds). From round 3 challenge the request: *is it needed? what is the bare-minimum MVP? what happens in edge case X?* If a stated premise is factually wrong, object at once with evidence and a concrete alternative — the user rules, record the ruling. Stop when all four are settled enough to act on, or after 5 rounds.
 
 Output (inline, or `plans/{slug}/requirements.md` if continuing to the heavy path):
 ```
