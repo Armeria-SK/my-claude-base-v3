@@ -15,7 +15,7 @@ Run every check that applies to what changed (`git status --porcelain`), then re
 | Changed | Check |
 |---|---|
 | Harness (`.claude/**`, `CLAUDE.md`, `README.md`) | `node .claude/scripts/validate.mjs` and `node --test ".claude/hooks/lib/*.test.js" ".claude/scripts/*.test.mjs"` |
-| Product code | dispatch `verifier` (build / types / lint / tests / behavior). It owns tool detection and the phase list. Then the conductor reads the diff against `docs/map.md`: a part the change added, removed, renamed or repurposed that the map does not reflect is a FAIL |
+| Product code | dispatch `verifier` (build / types / lint / tests / behavior). It owns tool detection and the phase list. Then the conductor reads the diff against the product's `map.md`: a part the change added, removed, renamed or repurposed that the map does not reflect is a FAIL |
 | UI files among the above | the above, plus `/preview` (launch → screenshot → console). Verifier cannot look at a screen; the conductor owns the visual check |
 | HTML reading documents made with `doc` | `node .claude/scripts/inline-assets.mjs --check <file.html>` — PASS means nothing outside the file is referenced |
 
