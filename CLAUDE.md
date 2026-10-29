@@ -13,13 +13,13 @@
 - `tasks/` — `todo.md` / `lessons.md` + `YYYY-MM/DD.md` (the journal; resuming = read the newest day file's latest report; append-only: a hook writes session START/END markers, `/save-session` appends the human report and its SAVE marker; never rotate or delete). There is no per-tool-call log — git and the conversation record cover what was done
 - `plans/{slug}/` — `PLAN.md` (+ `deviations.md`) produced by `/plan`
 - `.claude/` — agents / skills / commands / hooks / scripts
-- `dev/<product>/` — **every product under development lives here, one folder per product** (user ruling 2026-10-21). Never create product files at the workspace root.
+- `dev/<product>/` — **every product under development lives here, one folder per product**. Never create product files at the workspace root.
   - `dev/` is gitignored by this repo; each `dev/<product>/` is its **own independent git repository** (`git init` inside it, its own branches / remote / PRs). Product commits go to that repo, never to this one. §3's Git Workflow applies inside each product repo.
 - **Temp files**: `tmp/` under the working folder, always untracked. Never pass POSIX `/tmp/...` paths to Windows-native tools.
-  - **Delete after use (user ruling 2026-09-29; v2's `tmp/` grew unchecked).** Whoever creates something in `tmp/` deletes it once the task that needed it is done, before reporting done. Put each task's files under `tmp/<topic>/` so the whole folder can go at once. `tmp/` is not storage: anything worth keeping (a repro test, a finding, a script) moves into the project or the report first.
+  - **Delete after use (an unmanaged `tmp/` grows without bound).** Whoever creates something in `tmp/` deletes it once the task that needed it is done, before reporting done. Put each task's files under `tmp/<topic>/` so the whole folder can go at once. `tmp/` is not storage: anything worth keeping (a repro test, a finding, a script) moves into the project or the report first.
   - Delete only what you created. Another session may be using the rest; if unknown files are there, report them instead of deleting.
   - The SessionStart hook reports leftovers in `tmp/` so they are not forgotten.
-  - **Git worktrees live at `tmp/worktrees/<name>` (user ruling 2026-10-29)** — for this repo and every `dev/<product>/` repo alike; never the session scratchpad or anywhere else outside the workspace (the safety hooks cannot clean those up, so they piled up). This overrides the generic "use the scratchpad for temporary files" guidance. Remove with `git -C <repo> worktree remove <path>` once its PR is merged. `block-worktree-outside-tmp.js` enforces it.
+  - **Git worktrees live at `tmp/worktrees/<name>`** — for this repo and every `dev/<product>/` repo alike; never the session scratchpad or anywhere else outside the workspace (the safety hooks cannot clean those up, so they piled up). This overrides the generic "use the scratchpad for temporary files" guidance. Remove with `git -C <repo> worktree remove <path>` once its PR is merged. `block-worktree-outside-tmp.js` enforces it.
 
 ---
 
@@ -82,7 +82,7 @@ The conductor (main session, Opus at medium effort per `settings.json`) delegate
 **Critical = judged by Opus, executed by Sonnet.** Security, auth, payments, data loss or migration, irreversible or outward-facing steps (deploy, publish), architecture decisions, and root-cause diagnosis once `debugger` is stuck. Opus decides and reviews these; the code itself is still written by `executor`.
 
 ### Medium → xhigh ladder (Judgment tier)
-Effort cannot be overridden per dispatch (verified in the Claude Code docs), so each Opus role exists twice: the medium agent and its `-deep` twin (same model, `effort: xhigh`). Always start with the medium agent. Every Judgment report ends with `Status: RESOLVED | UNRESOLVED`, `Confidence`, and `Open:`.
+Effort is declared in each agent's frontmatter, not per dispatch, so each Opus role exists twice: the medium agent and its `-deep` twin (same model, `effort: xhigh`). Always start with the medium agent. Every Judgment report ends with `Status: RESOLVED | UNRESOLVED`, `Confidence`, and `Open:`.
 
 Escalate to the `-deep` twin when: the medium pass is `UNRESOLVED` or `Confidence: low`; the same finding is still open after one fix round; it returns `BLOCK` / CRITICAL (confirm before acting); or it and the worker disagree and evidence does not settle it. The `-deep` pass forms its own verdict first, then reconciles with the medium report, and is never used as the first pass. If `-deep` is also `UNRESOLVED`, ask the user the specific question it names. Operational detail: `quality-loop` skill.
 

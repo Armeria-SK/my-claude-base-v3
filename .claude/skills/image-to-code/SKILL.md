@@ -75,7 +75,7 @@ Treat each saved image as a design specification and work through it calmly and 
 - Background, panels, accents, button fills.
 - Text colour hierarchy, border colour logic, shadow mood.
 - Image tint or grade, and gradient restraint or intensity.
-- Estimate hex values from the saved PNG; if a script tool is available, sample pixels (e.g. Python + Pillow) for background, text and accent.
+- Estimate hex values from the saved PNG (do not call python to sample pixels: on this machine it hangs).
 - If imagegen-frontend-web produced a style anchor, use its hex values as tokens and use the image to confirm where they're used.
 - Keep the original palette logic; don't replace it with generic default web colours.
 

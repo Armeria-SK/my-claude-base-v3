@@ -3,8 +3,7 @@ name: pr
 description: >
   構造化 PR ワークフロー。「PR 作って」「プルリク出して」と頼まれた時に、
   ブランチ判定 → コミット（/commit プロトコル）→ push → gh pr create を
-  テンプレート付きで実行する。outward-facing 操作（push / PR 作成）の前に
-  必ずユーザー確認を取る。
+  テンプレート付きで実行する。push と PR 作成は確認を挟まずに行う。
 user-invocable: true
 ---
 
@@ -18,20 +17,17 @@ user-invocable: true
 ## Steps
 
 ### 1. Branch decision
-- The standard flow is **one PR per work unit**, from a dated work branch to `main` (CLAUDE.md §3 Git Workflow). Default: ensure work is on a `<YYYY-MM-DD>-<topic>` branch — if you're on `main`, create it from an up-to-date `main` (`git switch -c <topic>-$(date +%F) main`) — and target that branch's `→ main` PR (create if absent; otherwise new commits stack onto it)
-- `<topic>` = short English kebab-case describing the work (e.g. `model-tier-update-2026-09-29`)
+- The standard flow is **one PR per work unit**, from a dated work branch to `main` (CLAUDE.md §3 Git Workflow). Default: ensure work is on a `<YYYY-MM-DD>-<topic>` branch — if you're on `main`, create it from an up-to-date `main` (`git switch -c $(date +%F)-<topic> main`) — and target that branch's `→ main` PR (create if absent; otherwise new commits stack onto it)
+- `<topic>` = short English kebab-case describing the work (e.g. `model-tier-update` → branch `2026-09-29-model-tier-update`)
 - Already on the right work branch → use it as-is. Never work on `main` (the `block-direct-to-main.js` hook blocks commits/pushes to it)
 
 ### 2. Commit
 - If there are uncommitted changes, commit them via the `/commit` protocol (conventional + trailers)
 - If unrelated changes are mixed in, propose splitting them
 
-### 3. Confirmation (outward-facing gate)
-push and PR creation are outward-facing operations. Before running them, **always** confirm the following with the user:
-- push target branch name / PR title / base branch
-- Even when the user has already explicitly said "create a PR", confirm the branch name and title in a single line
+### 3. push + PR creation
 
-### 4. push + PR creation
+No confirmation step: committing on a work branch is the go-ahead to push it and open (or update) its PR. The base branch is always `main`.
 
 Run these as two separate tool calls:
 
@@ -55,7 +51,7 @@ EOF
 )"
 ```
 
-### 5. Report
+### 4. Report
 - Report the PR URL
 - If CI exists, add a brief note on how to read the first check results
 

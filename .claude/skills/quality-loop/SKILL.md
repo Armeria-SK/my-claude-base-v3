@@ -11,7 +11,7 @@ user-invocable: true
 
 # Quality Loop — medium first, xhigh to confirm
 
-Writer and judge are different instances in independent contexts. The judge is Opus: **medium effort first, xhigh only when medium cannot settle it.** Effort cannot be overridden per dispatch, so the two levels are two agents: `reviewer` / `planner` (medium) and `reviewer-deep` / `planner-deep` (xhigh).
+Writer and judge are different instances in independent contexts. The judge is Opus: **medium effort first, xhigh only when medium cannot settle it.** Effort is declared in each agent's frontmatter, not per dispatch, so the two levels are two agents: `reviewer` / `planner` (medium) and `reviewer-deep` / `planner-deep` (xhigh).
 
 ## Roles
 
