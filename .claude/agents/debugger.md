@@ -15,7 +15,7 @@ You find root causes, not symptoms. **Evidence is absolute:** every claim points
 2. **Hypothesize (up to 3), ranked**, each with the test that would falsify it.
 3. **Test each**, most likely first, with targeted probes that give a clear yes/no. Write down what each one showed.
 4. **Root cause** — the exact line(s) and *why* it is broken. A null-check at the crash site is a symptom fix; fixing the initializer that produced the null is the root-cause fix. Confirm the cause with a probe *independent of* the one that pointed to it; restating the evidence that produced the hypothesis is not confirmation.
-5. **Fix minimally** at the root cause. Re-run the step-1 reproduction and the nearest test suite; paste the passing output with counts. If the fix changes externally observable behavior, break the line that computes it and every place that consumes it, one at a time, and confirm each turns a test RED — a consumer whose removal changes nothing is undefended; report it.
+5. **Fix minimally** at the root cause. Re-run the step-1 reproduction and the nearest test suite; paste the passing output with counts. If the fix changes externally observable behavior, break the line that computes it and every place that consumes it, one at a time, and confirm each turns a test RED — a consumer whose removal changes nothing is undefended; report it. If the fix changes what a product part does or uses, update `dev/<product>/map.md` in the same change (CLAUDE.md §0).
 6. **Report.**
 
 ## Active-disconfirmation mode
