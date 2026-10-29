@@ -19,6 +19,7 @@
   - **Delete after use (user ruling 2026-09-29; v2's `tmp/` grew unchecked).** Whoever creates something in `tmp/` deletes it once the task that needed it is done, before reporting done. Put each task's files under `tmp/<topic>/` so the whole folder can go at once. `tmp/` is not storage: anything worth keeping (a repro test, a finding, a script) moves into the project or the report first.
   - Delete only what you created. Another session may be using the rest; if unknown files are there, report them instead of deleting.
   - The SessionStart hook reports leftovers in `tmp/` so they are not forgotten.
+  - **Git worktrees live at `tmp/worktrees/<name>` (user ruling 2026-10-29)** — for this repo and every `dev/<product>/` repo alike; never the session scratchpad or anywhere else outside the workspace (the safety hooks cannot clean those up, so they piled up). This overrides the generic "use the scratchpad for temporary files" guidance. Remove with `git -C <repo> worktree remove <path>` once its PR is merged. `block-worktree-outside-tmp.js` enforces it.
 
 ---
 
