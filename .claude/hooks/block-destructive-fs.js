@@ -24,7 +24,8 @@
 //                  allowed as "inside the root". Deliberate limit, not an oversight.
 //     Only rm and shred are touched by this ruling (it named "rm" specifically) — find/xargs/dd/
 //     truncate below, and the PowerShell delete cmdlets/Clear-Content further down (still gated by
-//     the original FORBIDDEN_TARGET + SAFE_LEAF leaf-allowlist), are unchanged.
+//     the original FORBIDDEN_TARGET + SAFE_LEAF leaf-allowlist), are unchanged by this ruling (the delete
+//     cmdlets later got a tmp/ exemption: see "PowerShell deletes under tmp/" below).
 //
 //   Disclosure (CLAUDE.md §1.5, user ruling 2026-08-12):
 //     1. What's newly allowed: any rm/shred target below the workspace root, any leaf name.
@@ -107,7 +108,69 @@
 //     such commands are never parsed into rm/bash segments at all -- a pre-existing gap, tracked separately.
 // The rewrite only runs after the `~` / glob / `$` checks and is followed by the same containment test,
 // so a drive root (`/d`, `/d/`), another drive (`/c/Windows`), `..` escapes and the workspace root itself
-// stay blocked. The other sections (dd, truncate, PowerShell cmdlets) keep FORBIDDEN_TARGET unchanged.
+// stay blocked. The other sections (dd, truncate, PowerShell cmdlets) keep FORBIDDEN_TARGET unchanged
+// (PowerShell delete cmdlets: except targets under tmp/, see the next section).
+//
+// PowerShell deletes under tmp/ (user request 2026-11-01): the delete cmdlets (PS_DELETE_CMDS: Remove-Item,
+// ri, rd, rmdir, del, erase) blocked every absolute target (FORBIDDEN_TARGET) and every -Recurse delete whose
+// leaf name was not in SAFE_LEAF, so tmp/ could not be cleaned from the PowerShell tool. Now a target skips both
+// checks when it resolves -- against payload.cwd, falling back to the workspace root like the rm section -- to
+// <root>/tmp or <root>/dev/<product>/tmp (CLAUDE.md §0), the directory itself or anything below it. Relative or
+// absolute, `\` or `/`, any letter case on win32: decided on the resolved path with the same normalizeRel +
+// foldCase comparison as the rm section. Targets are judged one by one; the others in the same command still get
+// the old rules.
+//   - FAIL CLOSED: the exemption applies only to a target made of plain path characters (PS_PLAIN_PATH: an
+//     optional `X:\` or `X:/` drive prefix, then ASCII letters/digits and `_ . - \ /`). This hook reads the
+//     command string, PowerShell expands and reinterprets much more: wildcards (-Path expands * ? [ ]), `$`
+//     (variables, $env:), backtick escapes, ( ) { } @ ; & | , (subexpressions, splatting, arrays), `~`, a colon
+//     anywhere but the drive (drive-relative `D:x`, alternate data stream `x:y`), space (only a quoted path has
+//     one) and anything non-ASCII -- notably the Unicode quotes U+2018..U+201F (PowerShell reads them as quote
+//     characters, the tokenizer does not) and the dashes U+2013 / U+2014 / U+2015 (PowerShell reads them as a
+//     parameter hyphen). Such a target gets today's rules unchanged. The parser's own quote stripping is taken as
+//     is, with no second round, so `"'tmp\x'"` (literal quotes in the real path) is not plain.
+//   - STANDALONE WORD: as for rm, every occurrence of the target text in the segment must be a whole word
+//     (isStandaloneWord). The tokenizer splits `"tmp\x"y\..\..\..\node_modules` into two arguments where
+//     PowerShell glues them into one path above the root, so a glued occurrence leaves the target on the old rules.
+//   - STILL BLOCKED, as before: outside the root (other drives, UNC, `..` that really escapes, a sibling like
+//     `<root>-other`), the root itself, the rest of the workspace (plans/, tasks/, .claude/, dev/<product>/src,
+//     ...), a tmp directory deeper down (dev/x/y/tmp), and a relative `tmp\x` when payload.cwd is not the root
+//     (it resolves under the cwd). Only the delete cmdlets changed: Clear-Content, rm/shred, find, xargs, dd and
+//     truncate are untouched.
+//   - ACTION PARAMETERS (ruling 2026-11-01): a token that directly follows -ErrorAction/-ea/-WarningAction/-wa/
+//     -InformationAction/-infa (any letter case) and is exactly an ActionPreference name (SilentlyContinue, Stop,
+//     Continue, Ignore, Inquire, Suspend, Break) is a parameter value, not a target, so `Remove-Item -Recurse
+//     -Force tmp\x -ErrorAction SilentlyContinue` is judged on tmp\x alone. Anything else stays a target (fail
+//     closed): any other value (`-ErrorAction plans\x`), an abbreviated parameter (`-ErrorA Stop`), another
+//     parameter (`-Include Stop`). This holds for every delete target in the section, not only tmp/ ones: the
+//     same idiom after a SAFE_LEAF target (`-Recurse node_modules -ErrorAction Stop`) is allowed now too.
+//   - LOCATION CHANGE: if the command text contains Set-Location / sl / cd / chdir / Push-Location / pushd /
+//     Pop-Location / popd as a standalone word ANYWHERE (PS_LOCATION_WORD, any case; not preceded or followed by a
+//     word character or hyphen, so `cd..`, `cd\`, `(cd`, `{ cd ..}`, `$null = Set-Location ..` and
+//     `& { cd .. }` match, `abcd` and `tmp\cdx` do not), relative targets may no longer resolve against
+//     payload.cwd. Then no target gets the tmp/ exemption, and a recursive delete is blocked outright -- the
+//     SAFE_LEAF pass is off too (`Set-Location ..; Remove-Item -Recurse -Force tmp` and `... node_modules` used to
+//     pass on the leaf name alone). It is a text scan, not a parse, so it over-approximates on purpose: a location
+//     change AFTER the delete, `cd` as an argument or inside a string, and path text such as `tmp\cd\x` all count
+//     (accepted false positives; reword the command or use an absolute path outside the word list).
+//   - COLON-BOUND PATH PARAMETERS: `-Path:v` / `-LiteralPath:v` (PowerShell also takes any unambiguous prefix and
+//     the alias -PSPath; here every prefix of literalpath -- even `-l` -- and of path / pspath with length >= 2,
+//     and -lp, counts) put `v` among the targets, judged exactly like a positional target: FORBIDDEN_TARGET, the
+//     tmp/ exemption (its standalone-word check then runs on the whole `-Path:v` token) and SAFE_LEAF. Before, such
+//     a token was only a flag, so it was never checked and could hide `plans` behind a tmp/ or SAFE_LEAF target.
+//     `-Path: v` (space after the colon) leaves `v` as an ordinary positional token, which is judged as before.
+//   - RECURSION AND DASHES: every prefix of -Recurse (-r, -re, -rec, ...) marks a recursive delete (Recurse is the
+//     only Remove-Item parameter starting with r), and an UNQUOTED token starting with an en dash, em dash or
+//     horizontal bar (U+2013 / U+2014 / U+2015) is a flag like one starting with `-`, never a target. Flag or
+//     target is decided on the raw token (rawArgs from lib/parse-cmd), before unquoting: PowerShell reads a quoted
+//     '-plans' or '<U+2013>plans' as a plain value (probed: Path=[-plans]), so it is a target and judged as one.
+//     Before, the unquoted `-plans` was dropped as a flag, hiding the value behind a SAFE_LEAF/tmp target.
+//   - KNOWN LIMITS: (a) any other parameter VALUE still looks like a path here and is judged as a target; (b)
+//     only a delete cmdlet at the start of a segment is examined: `& Remove-Item ...` (call operator) and a delete
+//     on a later line of a multi-line command are not seen (pre-existing lib/parse-cmd.js limits, pinned by the
+//     fs-ps-known-limit-* rows in hook-probes.samples.json, to be flipped when the parser is fixed); (c) the
+//     check is purely lexical, like rm: Windows PowerShell 5.1 Remove-Item -Recurse can, depending on the build,
+//     descend through a directory junction/symlink inside the target and delete in its real location (a probe on
+//     5.1.26100.9711 removed only the link, but nothing here relies on that).
 //
 // Input: Claude Code hook event JSON on stdin
 // Output: matching command -> message on stderr + exit 2 (block); otherwise exit 0
@@ -135,6 +198,20 @@ const DESTRUCTIVE_CMDS = new Set(['rm', 'shred']);
 // PowerShell delete cmdlets/aliases (the PowerShell tool shares this hook via the
 // Bash|PowerShell matcher; `rm` as a PS alias is already covered by the rm section)
 const PS_DELETE_CMDS = new Set(['remove-item', 'ri', 'rd', 'rmdir', 'del', 'erase']);
+
+// PowerShell starts a parameter name with a hyphen, an en dash, an em dash or a horizontal bar.
+const PS_DASH = /^[-\u2013\u2014\u2015]/;
+
+// `-ErrorAction SilentlyContinue` and friends: the value is an ActionPreference name, not a path, so it is
+// not a delete target (see header, ACTION PARAMETERS). Only these exact parameter names and value names count.
+const PS_ACTION_PARAM = /^[-\u2013\u2014\u2015](?:erroraction|ea|warningaction|wa|informationaction|infa)$/i;
+const PS_ACTION_VALUE = /^(?:silentlycontinue|stop|continue|ignore|inquire|suspend|break)$/i;
+
+// A location-changing cmdlet or alias (also the cd.. / cd\ functions) as a standalone word ANYWHERE in the command
+// text: not preceded or followed by a word character or hyphen. Deliberately a text scan, not a parse: it sees
+// `$null = Set-Location ..`, `{ cd ..}`, `if (1) { cd .. }`, `& { cd .. }`, and also a mere `tmp\cd\x`, a quoted
+// "cd" or a later change (false positives accepted). See header, LOCATION CHANGE.
+const PS_LOCATION_WORD = /(?<![\w-])(?:set-location|sl|cd|chdir|push-location|pushd|pop-location|popd)(?![\w-])/i;
 
 // Shell wrappers that can mediate an indirect rm/shred (find -exec sh -c '...', xargs env rm, ...)
 const SHELL_WRAPPERS = new Set(['sh', 'bash', 'dash', 'ash', 'zsh', 'env']);
@@ -252,6 +329,63 @@ function classifyRmTarget(root, cwd, target, msys) {
   return { abs, outside, isRootItself: !outside && rel === '' };
 }
 
+// --- PowerShell deletes under tmp/ (user request 2026-11-01; see header) -------------------------
+
+// Plain path text only: an optional `X:` + separator drive prefix, then ASCII [A-Za-z0-9_] and . - \ /.
+// A colon anywhere else (drive-relative `D:x`, alternate data stream `x:y`) is not allowed, so it
+// stays on the old rules; so does everything PowerShell expands or reinterprets: wildcards, `$`,
+// backtick, quotes, parentheses/braces, `@ ; & | ,`, `~`, space, non-ASCII.
+const PS_PLAIN_PATH = /^(?:[A-Za-z]:[\\/])?[\w.\-\\/]+$/;
+
+// Root-relative form (already case-folded on win32 and "/"-separated) of <root>/tmp and
+// <root>/dev/<product>/tmp, the directory itself or anything below it.
+const PS_TMP_REL = /^(?:dev\/[^/]+\/)?tmp(?:\/|$)/;
+
+// True when a PowerShell delete target provably resolves inside tmp/ (see header). Any doubt -> false,
+// and the caller applies the old FORBIDDEN_TARGET / SAFE_LEAF rules to that target. `word` is the token the
+// target came from (the same text, or `-Path:<target>`), which must be a whole word in the segment.
+function isPsTmpTarget(root, cwd, target, raw, word = target) {
+  if (!PS_PLAIN_PATH.test(target) || !isStandaloneWord(raw, word)) return false;
+  const abs = path.resolve(cwd, target.replace(/\\/g, '/'));
+  const { rel, outside } = normalizeRel(foldCase(root), foldCase(abs));
+  return !outside && PS_TMP_REL.test(rel);
+}
+
+// The value of a `-Path:value` / `-LiteralPath:value` token, or null. PowerShell accepts any unambiguous prefix
+// of a parameter name and the alias -PSPath: every prefix of literalpath (even `-l`), every prefix of path / pspath
+// with length >= 2 (`-p` is ambiguous), and -lp, counts here. Over-matching only adds one more target to judge.
+function psColonPathValue(token) {
+  const m = /^[-\u2013\u2014\u2015]([A-Za-z]+):(.+)$/.exec(token);
+  if (!m) return null;
+  const name = m[1].toLowerCase();
+  const isPath = name === 'lp' || 'literalpath'.startsWith(name) || (name.length >= 2 && ['path', 'pspath'].some((n) => n.startsWith(name)));
+  return isPath ? m[2] : null;
+}
+
+// -r, -rec, -Recurse, -Recurse:$true ... : Recurse is the only Remove-Item parameter starting with r, so any
+// prefix of it counts; anything starting with `rec` too (the old test).
+function isPsRecurseFlag(token) {
+  if (!PS_DASH.test(token)) return false;
+  const name = token.slice(1).split(':')[0].toLowerCase();
+  return name !== '' && ('recurse'.startsWith(name) || name.startsWith('rec'));
+}
+
+// Delete targets of one PowerShell delete segment as { value, word }: positional and space-separated values
+// (flags, cmd.exe-style /s switches and ActionPreference values are not targets) plus the values of colon-bound
+// path parameters. Flag or value is decided on the RAW token: PowerShell reads a quoted '-x' as a plain value.
+function psDeleteTargets(args, rawArgs) {
+  const targets = [];
+  args.forEach((t, i) => {
+    if (PS_DASH.test(rawArgs[i])) {
+      const value = psColonPathValue(t);
+      if (value !== null) targets.push({ value, word: t });
+    } else if (!/^\/[a-zA-Z]$/.test(t) && !(PS_ACTION_VALUE.test(t) && PS_ACTION_PARAM.test(args[i - 1] || ''))) {
+      targets.push({ value: t, word: t });
+    }
+  });
+  return targets;
+}
+
 let data = '';
 process.stdin.on('data', (c) => (data += c));
 process.stdin.on('end', () => {
@@ -281,7 +415,8 @@ process.stdin.on('end', () => {
 function checkCommand(command, cwd, root, msys) {
   const segs = segments(command);
   const useMsys = msys && !command.includes('PATH=') && !segs.some(isPathInvokedShell);
-  for (const { cmd, args, raw } of segs) {
+  const moved = PS_LOCATION_WORD.test(command);
+  for (const { cmd, args, rawArgs, raw } of segs) {
     // --- find ... -delete ---------------------------------------------------
     if (cmd === 'find') {
       if (args.includes('-delete')) {
@@ -359,24 +494,28 @@ function checkCommand(command, cwd, root, msys) {
     // --- PowerShell delete cmdlets (Remove-Item -Recurse, rd /s, del /s, ...) ---
     const psCmd = cmd.toLowerCase();
     if (PS_DELETE_CMDS.has(psCmd)) {
-      const psFlags = args.filter((t) => t.startsWith('-') || /^\/[a-zA-Z]$/.test(t));
-      const psTargets = args.filter((t) => !t.startsWith('-') && !/^\/[a-zA-Z]$/.test(t));
-      const psRecursive = psFlags.some((f) => /^-rec/i.test(f) || /^\/s$/i.test(f));
-      for (const t of psTargets) {
-        const unquoted = t.replace(/^["']|["']$/g, '').replace(/\\/g, '/');
+      const psTargets = psDeleteTargets(args, rawArgs);
+      const psRecursive = args.some((t) => isPsRecurseFlag(t) || /^\/s$/i.test(t));
+      const psInTmp = new Set(psTargets.filter((x) => !moved && isPsTmpTarget(root, cwd, x.value, raw, x.word)));
+      for (const x of psTargets) {
+        if (psInTmp.has(x)) continue;
+        const unquoted = x.value.replace(/^["']|["']$/g, '').replace(/\\/g, '/');
         if (FORBIDDEN_TARGET.test(unquoted)) {
           return `BLOCKED: "${cmd}" targeting "${unquoted}" is forbidden (root/home/parent/absolute path). Confirm with user before proceeding.`;
         }
       }
       if (psRecursive) {
         const allSafe =
+          !moved &&
           psTargets.length > 0 &&
-          psTargets.every((t) => {
-            const leaf = t.replace(/^["']|["']$/g, '').replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop();
+          psTargets.every((x) => {
+            if (psInTmp.has(x)) return true;
+            const leaf = x.value.replace(/^["']|["']$/g, '').replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop();
             return SAFE_LEAF.test(leaf);
           });
         if (!allSafe) {
-          return `BLOCKED: Recursive delete detected (${raw}). File deletion requires user confirmation (CLAUDE.md §1.5). Only disposable build dirs (node_modules, dist, ...) may be removed without asking.`;
+          const why = moved ? ' The command contains a location change (Set-Location/cd/Push-Location), so relative targets cannot be resolved.' : '';
+          return `BLOCKED: Recursive delete detected (${raw}).${why} File deletion requires user confirmation (CLAUDE.md §1.5). Only disposable build dirs (node_modules, dist, ...) may be removed without asking.`;
         }
       }
     }

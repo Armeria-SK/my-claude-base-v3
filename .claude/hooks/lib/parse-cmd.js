@@ -18,6 +18,8 @@
 //           will therefore under-detect a suffixed form by design — see the CWD_BUILTINS
 //           comment below.)
 //   args  – token array after cmd (flags + targets, no env-vars; outer quotes stripped, content kept)
+//   rawArgs – the same tokens with their outer quotes kept (rawArgs[i] is args[i] before unquoting), for
+//           callers that must tell a quoted `'-x'` (a plain value) from an unquoted `-x` (a flag)
 //   raw   – trimmed segment string after heredoc-strip (quotes kept as-is)
 
 'use strict';
@@ -139,7 +141,8 @@ const CWD_BUILTINS = new Set(['cd', 'pushd', 'popd']);
  * For bash/sh/eval indirection the inner command string is parsed recursively.
  */
 function normalizeSegment(seg) {
-  const tokens = tokenize(seg).map(unquoteToken);
+  const rawTokens = tokenize(seg);
+  const tokens = rawTokens.map(unquoteToken);
   if (tokens.length === 0) return [];
 
   let idx = 0;
@@ -225,7 +228,7 @@ function normalizeSegment(seg) {
   idx++;
 
   const args = tokens.slice(idx);
-  const entry = { cmd, args, raw: seg.trim() };
+  const entry = { cmd, args, rawArgs: rawTokens.slice(idx), raw: seg.trim() };
 
   // 4. Shell indirection: recursive parsing of inner command strings.
   //    bash -c "..."  /  sh -c "..."  → extract arg after -c from original seg
