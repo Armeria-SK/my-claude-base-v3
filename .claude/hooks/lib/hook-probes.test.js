@@ -95,8 +95,18 @@ function msysSpellings() {
   };
 }
 
+// <REPO_WIN>: <REPO> with backslashes, the way PowerShell users write it (win32 only; absent elsewhere,
+// where the rows using it are skipped). Doubled because substitute() works on the raw JSON text.
+function winSpellings() {
+  return process.platform === 'win32' ? { REPO_WIN: dirs.REPO.split('\\').join('\\\\') } : {};
+}
+
 function substitute(raw) {
-  const subs = { ...Object.fromEntries(Object.entries(dirs).map(([k, v]) => [k, slash(v)])), ...msysSpellings() };
+  const subs = {
+    ...Object.fromEntries(Object.entries(dirs).map(([k, v]) => [k, slash(v)])),
+    ...msysSpellings(),
+    ...winSpellings(),
+  };
   // longest names first so <SANDBOX_GIT_MAIN> is not eaten by <SANDBOX_GIT> or <SANDBOX>
   return Object.keys(subs)
     .sort((a, b) => b.length - a.length)
