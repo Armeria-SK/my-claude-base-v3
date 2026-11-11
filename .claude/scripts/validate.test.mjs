@@ -18,13 +18,16 @@ test('baseline: the harness passes validate', () => {
 });
 
 const cases = [
-  ['reviewer effort low->high', '.claude/agents/reviewer.md', /^effort: low/m, 'effort: high'],
-  ['executor pinned model id', '.claude/agents/executor.md', /^model: fable/m, 'model: claude-fable-5-1'],
-  ['executor model fable->opus', '.claude/agents/executor.md', /^model: fable/m, 'model: opus'],
-  ['debugger model opus->fable', '.claude/agents/debugger.md', /^model: opus/m, 'model: fable'],
+  ['reviewer effort xhigh->high', '.claude/agents/reviewer.md', /^effort: xhigh/m, 'effort: high'],
+  ['executor pinned model id', '.claude/agents/executor.md', /^model: opus/m, 'model: claude-opus-5-5'],
+  ['executor model opus->fable', '.claude/agents/executor.md', /^model: opus/m, 'model: fable'],
+  ['debugger model opus->sonnet', '.claude/agents/debugger.md', /^model: opus/m, 'model: sonnet'],
   ['verifier effort medium->xhigh', '.claude/agents/verifier.md', /^effort: medium/m, 'effort: xhigh'],
   ['reviewer-deep gains Write', '.claude/agents/reviewer-deep.md', /^tools: Bash, Glob, Grep, Read/m, 'tools: Bash, Glob, Grep, Read, Write'],
-  ['planner-deep effort medium->high', '.claude/agents/planner-deep.md', /^effort: medium/m, 'effort: high'],
+  ['planner-deep effort xhigh->max', '.claude/agents/planner-deep.md', /^effort: xhigh/m, 'effort: max'],
+  ['reviewer-deep effort max->xhigh', '.claude/agents/reviewer-deep.md', /^effort: max/m, 'effort: xhigh'],
+  ['planner effort medium->low', '.claude/agents/planner.md', /^effort: medium/m, 'effort: low'],
+  ['executor effort medium->low', '.claude/agents/executor.md', /^effort: medium/m, 'effort: low'],
   ['explorer gains effort key', '.claude/agents/explorer.md', /^model: haiku/m, 'model: haiku\neffort: low'],
   ['reviewer loses Status field', '.claude/agents/reviewer.md', /^Status: RESOLVED \| UNRESOLVED\n/m, ''],
   ['hook wiring points at a missing file', '.claude/settings.json', /block-no-verify.js/, 'block-no-verify-x.js'],
@@ -46,7 +49,7 @@ for (const [name, file, re, rep] of cases) {
 }
 
 for (const twin of ['planner-deep', 'reviewer-deep']) {
-  test(`validate catches: ${twin} missing (low role has no -deep twin)`, () => {
+  test(`validate catches: ${twin} missing (first-pass role has no -deep twin)`, () => {
     const file = `.claude/agents/${twin}.md`;
     fs.renameSync(file, `${file}.off`);
     try {

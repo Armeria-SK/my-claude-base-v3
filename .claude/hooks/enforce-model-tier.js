@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // PreToolUse hook (Task|Agent): keep every dispatch on the model tier and effort its agent file declares.
 //
-// The tier is written once, in each agent's frontmatter `model:` (fable / opus / haiku) and `effort:`.
+// The tier is written once, in each agent's frontmatter `model:` (opus / haiku, or fable) and `effort:`.
 // A per-dispatch `model` or `effort` parameter beats frontmatter, so those are the ways a tier can be
-// silently bypassed — e.g. sending `reviewer` (fable) to opus, `verifier` (opus) to fable, or
-// `reviewer` at effort xhigh.
+// silently bypassed — e.g. sending `reviewer` (opus) to sonnet, `explorer` (haiku) to opus, or
+// `reviewer` at effort max.
 //
 // Denies (exit 2, message on stderr):
 //   - a `model` override whose family differs from the agent's frontmatter family
@@ -12,6 +12,7 @@
 //     frontmatter effort, e.g. haiku, accepts none)
 // One exception, the usage-limit fallback (CLAUDE.md §2): a fable agent may be dispatched on opus
 // when the dispatch also carries the mapped `effort` (agent effort low -> medium, medium -> xhigh).
+// Dormant while no agent file declares fable; kept for when one does.
 // A missing or different effort is denied, as is every other family pair.
 // Allows everything else: no `model` / `effort` given, same family and same effort, built-in agent
 // types without a definition in .claude/agents/ (nothing to compare against).

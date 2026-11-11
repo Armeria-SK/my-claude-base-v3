@@ -13,7 +13,7 @@ user-invocable: true
 
 `/harness [feature|bugfix|refactor|security|research] [task]`. The conductor only delegates, coordinates, integrates and decides (CLAUDE.md §2). Each step's model and effort come from the agent it names — do not restate them here.
 
-Judge steps use the **low → deep ladder** from `quality-loop`: run `reviewer` / `planner` first; run the `-deep` twin only on the escalation triggers listed there.
+Judge steps use the **first pass → `-deep` ladder** from `quality-loop`: run `reviewer` / `planner` first; run the `-deep` twin only on the escalation triggers listed there.
 
 ## feature (default)
 1. `planner` → PLAN.md (or `/plan`'s heavy path). Product-shaped requests: get the user's ruling on gap proposals/objections in one batched question *before* any executor starts.
