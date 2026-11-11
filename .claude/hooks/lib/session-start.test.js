@@ -50,7 +50,7 @@ test('the newest report wins, across days and within a file', () => {
   assert.doesNotMatch(ctx, /OLDEST|MIDDLE-A/);
 });
 
-test('machine marker lines are not mistaken for a report', () => {
+test('legacy marker lines left in old day files are not mistaken for a report', () => {
   const ctx = inject({ 'tasks/2026-09/29.md': '- 09:00:00 [aaaaaaaa] SESSION START (startup)\n' });
   assert.match(ctx, /no session report saved yet/);
   assert.doesNotMatch(ctx, /SESSION START/);

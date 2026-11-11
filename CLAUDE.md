@@ -10,7 +10,7 @@
 ---
 
 ## 0. Project Structure
-- `tasks/` — `todo.md` / `lessons.md` + `YYYY-MM/DD.md` (the journal; resuming = read the newest day file's latest report; append-only: a hook writes session START/END markers, `/save-session` appends the human report and its SAVE marker; never rotate or delete). There is no per-tool-call log — git and the conversation record cover what was done
+- `tasks/` — `todo.md` / `lessons.md` + `YYYY-MM/DD.md` (the journal; holds only the human reports `/save-session` appends — no hook writes to it; resuming = read the newest day file's latest report; append-only, never rotate or delete). There is no per-tool-call log — git and the conversation record cover what was done
 - `plans/{slug}/` — `PLAN.md` (+ `deviations.md`) produced by `/plan`
 - `.claude/` — agents / skills / commands / hooks / scripts
 - `dev/<product>/` — **every product under development lives here, one folder per product**. Never create product files at the workspace root.
@@ -39,7 +39,7 @@ Every claim needs evidence (test output, diff, log, grep). Unprovable → say "u
 Never approve your own code. Non-trivial changes run the `quality-loop` skill; after APPROVE the `verifier` runs the evidence check. Exception: trivial 1–2 line obvious fixes.
 
 ### 1.4 Session Continuity
-Session markers are written by hook; the human report is written by `/save-session`. At logical boundaries (before /compact, before ending a work block) run `/save-session`. Suggest compact at boundaries, never mid-implementation.
+The journal holds only the human reports written by `/save-session`; no hook writes session markers. At logical boundaries (before /compact, before ending a work block) run `/save-session`. Suggest compact at boundaries, never mid-implementation.
 
 ### 1.5 Escalation Boundaries
 Same approach fails 3× → stop and replan from a different angle. Change touches 5+ files → confirm scope. Security-related → user review. **File/data deletion → always confirm** (`block-destructive-fs.js` backs this up). An `UNRESOLVED` verdict from the last automated pass is taken to the user as a specific question — never re-run in a loop.
