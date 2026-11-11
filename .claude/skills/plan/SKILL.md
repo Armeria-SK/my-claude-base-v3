@@ -35,7 +35,7 @@ Goal · Scope (IN/OUT) · Success Criteria (checkable) · Constraints · Assumpt
 ## Heavy path — research → plan → build
 1. **Research** — dispatch `explorer` (codebase facts, parallel) and use WebSearch/WebFetch for external facts. For product-shaped work, also look at comparable products (table stakes, common complaints) and volunteer gap proposals. Write `plans/{slug}/research.md`: requirements, assumptions, code impact, risks, proposals awaiting a ruling, evidence-backed objections.
 2. **GO / NO-GO** — go if requirements are clear and risks are containable; otherwise NO-GO with the specific blocking question. Present it to the user (one batched, plain-language question) when a proposal or objection needs a ruling. **Proposals never enter scope without a ruling.**
-3. **Plan** — dispatch `planner` (medium) to write `plans/{slug}/PLAN.md` (format in the agent). If it returns `UNRESOLVED` / low confidence, dispatch `planner-deep`. For non-trivial plans, run Self-Review Mode through the same medium → deep ladder (quality-loop).
+3. **Plan** — dispatch `planner` (low) to write `plans/{slug}/PLAN.md` (format in the agent). If it returns `UNRESOLVED` / low confidence, dispatch `planner-deep`. For non-trivial plans, run Self-Review Mode through the same low → deep ladder (quality-loop).
 4. **Build** — hand `executor` the PLAN.md **path** (never a paraphrase of it), one phase at a time; each phase runs the quality-loop and `check`. Out-of-scope ideas found on the way go to `plans/{slug}/deviations.md` and are proposed at `/save-session` — never implemented on the spot.
 5. **Close** — record results in PLAN.md, update `tasks/todo.md`, and clean up temporary files.
 

@@ -13,7 +13,7 @@ user-invocable: true
 
 `/harness [feature|bugfix|refactor|security|research] [task]`. The conductor only delegates, coordinates, integrates and decides (CLAUDE.md §2). Each step's model and effort come from the agent it names — do not restate them here.
 
-Judge steps use the **medium → deep ladder** from `quality-loop`: run `reviewer` / `planner` first; run the `-deep` twin only on the escalation triggers listed there.
+Judge steps use the **low → deep ladder** from `quality-loop`: run `reviewer` / `planner` first; run the `-deep` twin only on the escalation triggers listed there.
 
 ## feature (default)
 1. `planner` → PLAN.md (or `/plan`'s heavy path). Product-shaped requests: get the user's ruling on gap proposals/objections in one batched question *before* any executor starts.
@@ -26,7 +26,7 @@ Judge steps use the **medium → deep ladder** from `quality-loop`: run `reviewe
 Autonomous and convergent; the user is asked at most once.
 1. **Reproduce first.** `debugger` gets a failing reproduction (test / command / log) on its own before the user is involved.
 2. **Root cause.** Clear cause → `debugger` fixes. Unclear → fan out up to 3 `debugger` dispatches, one hypothesis each, each running its single most discriminating probe; keep the survivor. Nothing survives, or the same approach has failed 3 times → hand the collected evidence to `reviewer-deep` for an independent diagnosis (read-only), then a fresh `debugger` fix.
-3. **Fix → verify** loop, max 3 cycles, internal: `verifier` PASS/FAIL; on FAIL the findings go back to the debugger, not the user.
+3. **Fix → verify** loop, max 3 cycles, internal: `verifier` PASS/FAIL; on FAIL the findings go back to the same debugger (resumed, per `quality-loop`), not the user.
 4. **Regression test** by `executor`, pinned to the confirmed root cause.
 5. `reviewer` (code) on the fix + test before closing.
 6. Still failing after cycle 3 → ask the user once, in one batched question (bug / reproduction / tried / ruled out / blocker / decision needed).

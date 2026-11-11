@@ -1,19 +1,9 @@
-// Shared helpers for session-start.js / session-journal.js / block-destructive-fs.js.
-// The journal holds session boundary markers (START / END / SAVE) and the human session reports
-// written by /save-session. Append-only by contract — nothing here deletes or rewrites.
+// Shared helper for session-start.js / block-destructive-fs.js / block-worktree-outside-tmp.js.
+// The filename is historical: the journal (tasks/YYYY-MM/DD.md) now holds only the human reports
+// appended by /save-session, and no hook writes to it, so the only helper left is projectRoot.
 
 const fs = require('node:fs');
 const path = require('node:path');
-
-const two = (n) => String(n).padStart(2, '0');
-
-function stamp(d = new Date()) {
-  return `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
-}
-
-function id8(payload) {
-  return String(payload.session_id || '--------').slice(0, 8);
-}
 
 // Resolve the workspace root defensively: normalize each candidate (path.resolve absorbs
 // drive-relative forms like "D:my-claude-base-v2" — a real v1 incident class), then walk up
@@ -34,39 +24,4 @@ function projectRoot(payload) {
   return path.resolve(payload.cwd || process.cwd());
 }
 
-// tasks/YYYY-MM/DD.md for a given date (default today), creating dir + header on
-// demand. The journal is ONE global timeline: always under the workspace root's tasks/,
-// never routed per product (dev-mode tasks routing does not apply to it).
-function journalFile(root, d = new Date()) {
-  const dir = path.join(root, 'tasks', `${d.getFullYear()}-${two(d.getMonth() + 1)}`);
-  fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, `${two(d.getDate())}.md`);
-  if (!fs.existsSync(file)) {
-    try {
-      fs.writeFileSync(
-        file,
-        `# ${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} 作業ジャーナル\n\n`,
-        { flag: 'wx' }
-      );
-    } catch {
-      /* 並走セッションが先に作った — 既存内容はそのまま、呼び出し側の追記へフォールバック */
-    }
-  }
-  return file;
-}
-
-// Path of the journal file for a date WITHOUT creating anything (for read-side scans)
-function journalPath(root, d) {
-  return path.join(
-    root,
-    'tasks',
-    `${d.getFullYear()}-${two(d.getMonth() + 1)}`,
-    `${two(d.getDate())}.md`
-  );
-}
-
-function appendLine(root, line) {
-  fs.appendFileSync(journalFile(root), line + '\n');
-}
-
-module.exports = { stamp, id8, projectRoot, journalFile, journalPath, appendLine, two };
+module.exports = { projectRoot };
