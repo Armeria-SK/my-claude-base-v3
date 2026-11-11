@@ -54,6 +54,9 @@ When a judge or the verifier returns findings to fix, resume the worker that wro
 ### Escalate the worker to `executor-deep`
 Only when `executor` failed twice on the same point — the same review finding still open, or the same test still failing, after the original change and one fix-back — or when PLAN.md marks the phase `Hard: yes — <reason>` (planner's format). Never the default first pass: an unmarked phase that has not failed twice goes to `executor`. Order against the judge ladder: when the repeat finding also triggers the -deep judge (trigger 2 above), the -deep judge confirms first; if the finding stands, the next fix goes to `executor-deep`. Hand it the PLAN.md path and the failed `executor` report. If `executor-deep` fails too, replan from a different angle (CLAUDE.md §1.5).
 
+### Usage-limit fallback
+If a Fable worker or judge dies on a billing / credit / rate-limit error, restart that role on Opus per CLAUDE.md §2: a fresh dispatch, not a fix-back, and say so in the report.
+
 ## Cycle-3 carryover
 If cycle 3 still ends in REQUEST_CHANGES, stop looping. Report to the user: what was fixed, what remains (finding, severity, file:line, why it did not converge), and your recommendation. The verifier still runs on the current state so the report says exactly what is proven.
 

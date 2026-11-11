@@ -12,12 +12,19 @@ const HOOK = path.resolve(__dirname, '..', 'enforce-model-tier.js');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tier-'));
 after(() => fs.rmSync(root, { recursive: true, force: true }));
 fs.mkdirSync(path.join(root, '.claude', 'agents'), { recursive: true });
-const agent = (name, model) =>
-  fs.writeFileSync(path.join(root, '.claude', 'agents', `${name}.md`), `---\r\nname: ${name}\r\nmodel: ${model}\r\n---\r\nbody\r\n`);
-agent('reviewer', 'fable');
-agent('executor', 'fable');
-agent('verifier', 'opus');
+const agent = (name, model, effort) =>
+  fs.writeFileSync(
+    path.join(root, '.claude', 'agents', `${name}.md`),
+    `---\r\nname: ${name}\r\nmodel: ${model}\r\n${effort ? `effort: ${effort}\r\n` : ''}---\r\nbody\r\n`
+  );
+agent('reviewer', 'fable', 'low');
+agent('executor', 'fable', 'low');
+agent('reviewer-deep', 'fable', 'medium');
+agent('legacy', 'fable');
+agent('verifier', 'opus', 'medium');
 agent('explorer', 'haiku');
+agent('cheap', 'haiku', 'low');
+agent('steady', 'sonnet', 'low');
 
 function verdict(toolInput) {
   const r = spawnSync(process.execPath, [HOOK], {
@@ -34,7 +41,21 @@ const cases = [
   ['fable agent, same-family full id override', { subagent_type: 'executor', model: 'claude-fable-5-1', prompt: 'x' }, 0],
   ['opus agent, same-family alias override', { subagent_type: 'verifier', model: 'opus', prompt: 'x' }, 0],
   ['opus agent, same-family full id override', { subagent_type: 'verifier', model: 'claude-opus-5-5', prompt: 'x' }, 0],
-  ['fable agent downgraded to opus', { subagent_type: 'reviewer', model: 'opus', prompt: 'x' }, 2],
+  ['fable agent on opus without effort', { subagent_type: 'reviewer', model: 'opus', prompt: 'x' }, 2],
+  ['low fable agent, opus fallback with effort medium', { subagent_type: 'reviewer', model: 'opus', effort: 'medium', prompt: 'x' }, 0],
+  ['low fable agent, opus full id fallback with effort medium', { subagent_type: 'executor', model: 'claude-opus-5-5', effort: 'medium', prompt: 'x' }, 0],
+  ['-deep fable agent, opus fallback with effort xhigh', { subagent_type: 'reviewer-deep', model: 'opus', effort: 'xhigh', prompt: 'x' }, 0],
+  ['low fable agent, opus fallback with the -deep effort', { subagent_type: 'reviewer', model: 'opus', effort: 'xhigh', prompt: 'x' }, 2],
+  ['low fable agent, opus fallback keeping its own effort', { subagent_type: 'reviewer', model: 'opus', effort: 'low', prompt: 'x' }, 2],
+  ['-deep fable agent, opus fallback with effort medium', { subagent_type: 'reviewer-deep', model: 'opus', effort: 'medium', prompt: 'x' }, 2],
+  ['fable agent with no effort in its file, opus fallback', { subagent_type: 'legacy', model: 'opus', effort: 'medium', prompt: 'x' }, 2],
+  ['fable agent, sonnet with the mapped effort', { subagent_type: 'reviewer', model: 'sonnet', effort: 'medium', prompt: 'x' }, 2],
+  ['fable agent, haiku with the mapped effort', { subagent_type: 'reviewer', model: 'haiku', effort: 'medium', prompt: 'x' }, 2],
+  ['opus agent, sonnet with an effort', { subagent_type: 'verifier', model: 'sonnet', effort: 'medium', prompt: 'x' }, 2],
+  ['haiku agent, opus with effort medium', { subagent_type: 'explorer', model: 'opus', effort: 'medium', prompt: 'x' }, 2],
+  ['haiku agent that carries an effort, opus with the mapped effort', { subagent_type: 'cheap', model: 'opus', effort: 'medium', prompt: 'x' }, 2],
+  ['sonnet agent, opus with the mapped effort', { subagent_type: 'steady', model: 'opus', effort: 'medium', prompt: 'x' }, 2],
+  ['opus agent, same-family override ignores effort', { subagent_type: 'verifier', model: 'opus', effort: 'xhigh', prompt: 'x' }, 0],
   ['fable agent downgraded to sonnet', { subagent_type: 'executor', model: 'sonnet', prompt: 'x' }, 2],
   ['opus agent switched to fable', { subagent_type: 'verifier', model: 'fable', prompt: 'x' }, 2],
   ['haiku agent upgraded to fable', { subagent_type: 'explorer', model: 'fable', prompt: 'x' }, 2],
