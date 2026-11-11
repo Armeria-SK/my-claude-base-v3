@@ -65,34 +65,35 @@ Design the dispatch before writing prose:
 - **Outcome first** — state what done looks like and why it matters, not a step script. Give goal, reason, constraints; let the model plan (scripted thinking lowers quality on reasoning models).
 - **Return shape** — name what must come back and in what form. Agents already define theirs; add fields the task needs.
 - **Inputs by path** — pass PLAN.md and file *paths*; never paraphrase scope.
-- **Depth is a knob** — pick the agent (medium vs `-deep`, §2) deliberately; do not paste "think harder" into a prompt.
+- **Depth is a knob** — pick the agent (low vs `-deep`, §2) deliberately; do not paste "think harder" into a prompt.
 
 ---
 
 ## 2. Delegation & Model Tiers
 
-The conductor (main session, Opus at medium effort per `settings.json`) delegates, coordinates, integrates and decides — it **never writes code or non-trivial deliverables itself**. Direct work allowed: single-point config/doc edits, trivial fixes in non-code files, answers and conversation. One task, one subagent; investigation, review, parallel independent tasks, and debugging always go to a subagent — the one exception is a lookup whose target is already pinned down (Rules, below). **Scope handoff: pass the PLAN.md *path*; the worker reads it.**
+The conductor (main session: Opus at medium effort per `settings.json`, which stays as is; for heavy work the owner switches it to Fable at low effort by hand) delegates, coordinates, integrates and decides — it **never writes code or non-trivial deliverables itself**. Direct work allowed: single-point config/doc edits, trivial fixes in non-code files, answers and conversation. One task, one subagent; investigation, review, parallel independent tasks, and debugging always go to a subagent — the one exception is a lookup whose target is already pinned down (Rules, below). **Scope handoff: pass the PLAN.md *path*; the worker reads it.**
 
 ### Model Tier Policy (single source of truth)
 
 | Tier | Model · effort | Agents | Use for |
 |---|---|---|---|
-| **Judgment** | Opus · **medium first**, **xhigh to confirm** | `planner` / `reviewer` (medium) → `planner-deep` / `reviewer-deep` (xhigh) | planning, code / security / architecture review, plan review, anything critical (below) |
-| **Work** | Sonnet · **xhigh** | `executor`, `debugger`, `verifier` | implementation, tests, bug hunting and fixing, evidence checks |
+| **Fable** | Fable · **low first**, **medium to confirm** | `planner` / `reviewer` / `executor` (low) → `planner-deep` / `reviewer-deep` / `executor-deep` (medium) | planning, plan review, code / security / architecture review, implementation, anything critical (below) |
+| **Opus** | Opus · **medium** | `debugger`, `verifier` | bug hunting and fixing, evidence checks |
 | **Trivial** | Haiku · (no effort key) | `explorer`, `chore` | grep / file search / lookups; deleting, moving, renaming, listing, single commands |
 
-**Critical = judged by Opus, executed by Sonnet.** Security, auth, payments, data loss or migration, irreversible or outward-facing steps (deploy, publish), architecture decisions, and root-cause diagnosis once `debugger` is stuck. Opus decides and reviews these; the code itself is still written by `executor`.
+**Critical = decided and reviewed by the Fable judges, proven by Opus.** Security, auth, payments, data loss or migration, irreversible or outward-facing steps (deploy, publish), architecture decisions, and root-cause diagnosis once `debugger` is stuck. `planner` / `reviewer` decide and review these (confirmed by the `-deep` twin); the code itself is still written by `executor`, and the evidence check is the Opus `verifier`'s.
 
-### Medium → xhigh ladder (Judgment tier)
-Effort is declared in each agent's frontmatter, not per dispatch, so each Opus role exists twice: the medium agent and its `-deep` twin (same model, `effort: xhigh`). Always start with the medium agent. Every Judgment report ends with `Status: RESOLVED | UNRESOLVED`, `Confidence`, and `Open:`.
+### Low → medium ladder (Fable roles)
+Effort is declared in each agent's frontmatter, not per dispatch, so each Fable role exists twice: the low agent and its `-deep` twin (same model, `effort: medium`). Always start with the low agent. Every planner / reviewer report ends with `Status: RESOLVED | UNRESOLVED`, `Confidence`, and `Open:`.
 
-Escalate to the `-deep` twin when: the medium pass is `UNRESOLVED` or `Confidence: low`; the same finding is still open after one fix round; it returns `BLOCK` / CRITICAL (confirm before acting); or it and the worker disagree and evidence does not settle it. The `-deep` pass forms its own verdict first, then reconciles with the medium report, and is never used as the first pass. If `-deep` is also `UNRESOLVED`, ask the user the specific question it names. Operational detail: `quality-loop` skill.
+Escalate a judge (`planner` / `reviewer`) to its `-deep` twin when: the low pass is `UNRESOLVED` or `Confidence: low`; the same finding is still open after one fix round; it returns `BLOCK` / CRITICAL (confirm before acting); or it and the worker disagree and evidence does not settle it. The `-deep` pass forms its own verdict first, then reconciles with the low report, and is never used as the first pass. If `-deep` is also `UNRESOLVED`, ask the user the specific question it names. `executor-deep` is the implementation twin: dispatch it only when `executor` fails on the same point twice, or when the plan marks a step as hard — never as the first pass. Operational detail: `quality-loop` skill.
 
 ### Rules
-- A tier is declared once, in each agent's frontmatter `model:` alias (`opus` / `sonnet` / `haiku` — never a pinned model ID, so version bumps carry over). Skills and docs do not restate concrete model IDs.
-- `enforce-model-tier.js` denies any per-dispatch `model` that differs from the agent's frontmatter family, and any dispatch resolving to Fable. To change a tier, edit the agent file. Do not set `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`.
+- A tier is declared once, in each agent's frontmatter `model:` alias (`fable` / `opus` / `haiku` — never a pinned model ID, so version bumps carry over). Skills and docs do not restate concrete model IDs.
+- `enforce-model-tier.js` denies any per-dispatch `model` that differs from the agent's frontmatter family. To change a tier, edit the agent file. Do not set `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`.
 - Delegation has a fixed cost: a nested model loop plus a lossy summary on the way back. The one carve-out from "always go to a subagent" above: a **read-only lookup whose target is already pinned down** (one grep, one file, one command, answer read directly) runs inline in the conductor — cheaper and more faithful than a dispatch. It stays a carve-out: the moment the answer needs breadth, many files, bulk output kept out of this context, or any write, it is `explorer` / `chore` per the tier table. Never inline to dodge a delegation you simply don't feel like making.
-- Planner and reviewer are read-mostly Judgment roles: never give review-only agents write-capable tools.
+- Planner and reviewer are read-mostly judge roles: never give review-only agents write-capable tools.
+- **Fix-backs go to the same worker.** When a reviewer or verifier returns findings, resume the worker that wrote the change (`SendMessage` to its agent ID / name) and pass the findings verbatim, instead of dispatching a fresh worker: the author keeps its context and knows why it wrote what it wrote, a fresh worker re-reads everything. Start fresh only if its context is near full, it was stopped, or it is a one-shot built-in type that cannot be resumed; if a resume fails, fall back to a fresh dispatch and say so in the report. Detail: `quality-loop` skill.
 - `node .claude/scripts/validate.mjs` mechanically checks the roster, pins and hook wiring.
 
 ---

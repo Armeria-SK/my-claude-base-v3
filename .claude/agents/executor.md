@@ -1,8 +1,8 @@
 ---
 name: executor
-description: "実装担当（Sonnet・effort xhigh）。既存の規約に沿って必要最小限の正しいコードを書き、変更ごとにテスト実行で検証する。指示外の機能追加や無断のリファクタはしない。実装・テスト追加・既知の原因のバグ修正を委任するときに使う（原因が不明なバグは debugger）。「実装して」「コードを書いて」「この機能を作って」で使う。"
-model: sonnet
-effort: xhigh
+description: "実装担当（Fable・effort low の初回パス）。既存の規約に沿って必要最小限の正しいコードを書き、変更ごとにテスト実行で検証する。指示外の機能追加や無断のリファクタはしない。実装・テスト追加・既知の原因のバグ修正を委任するときに使う（原因が不明なバグは debugger）。同じ点で2回失敗した、または計画書が難所と印を付けた手順は、指揮者が executor-deep（Fable・effort medium）に切り替える。「実装して」「コードを書いて」「この機能を作って」で使う。"
+model: fable
+effort: low
 ---
 
 # Executor

@@ -18,10 +18,15 @@ test('baseline: the harness passes validate', () => {
 });
 
 const cases = [
-  ['reviewer effort medium->high', '.claude/agents/reviewer.md', /^effort: medium/m, 'effort: high'],
-  ['executor pinned model id', '.claude/agents/executor.md', /^model: sonnet/m, 'model: claude-sonnet-5-5'],
+  ['reviewer effort low->high', '.claude/agents/reviewer.md', /^effort: low/m, 'effort: high'],
+  ['executor pinned model id', '.claude/agents/executor.md', /^model: fable/m, 'model: claude-fable-5-1'],
+  ['executor model fable->opus', '.claude/agents/executor.md', /^model: fable/m, 'model: opus'],
+  ['executor-deep effort medium->low', '.claude/agents/executor-deep.md', /^effort: medium/m, 'effort: low'],
+  ['executor-deep model fable->opus', '.claude/agents/executor-deep.md', /^model: fable/m, 'model: opus'],
+  ['debugger model opus->fable', '.claude/agents/debugger.md', /^model: opus/m, 'model: fable'],
+  ['verifier effort medium->xhigh', '.claude/agents/verifier.md', /^effort: medium/m, 'effort: xhigh'],
   ['reviewer-deep gains Write', '.claude/agents/reviewer-deep.md', /^tools: Bash, Glob, Grep, Read/m, 'tools: Bash, Glob, Grep, Read, Write'],
-  ['planner-deep effort xhigh->high', '.claude/agents/planner-deep.md', /^effort: xhigh/m, 'effort: high'],
+  ['planner-deep effort medium->high', '.claude/agents/planner-deep.md', /^effort: medium/m, 'effort: high'],
   ['explorer gains effort key', '.claude/agents/explorer.md', /^model: haiku/m, 'model: haiku\neffort: low'],
   ['reviewer loses Status field', '.claude/agents/reviewer.md', /^Status: RESOLVED \| UNRESOLVED\n/m, ''],
   ['hook wiring points at a missing file', '.claude/settings.json', /block-no-verify.js/, 'block-no-verify-x.js'],
@@ -38,6 +43,20 @@ for (const [name, file, re, rep] of cases) {
       assert.strictEqual(validate().status, 1);
     } finally {
       fs.writeFileSync(file, orig);
+    }
+  });
+}
+
+for (const twin of ['planner-deep', 'reviewer-deep', 'executor-deep']) {
+  test(`validate catches: ${twin} missing (low role has no -deep twin)`, () => {
+    const file = `.claude/agents/${twin}.md`;
+    fs.renameSync(file, `${file}.off`);
+    try {
+      const r = validate();
+      assert.strictEqual(r.status, 1);
+      assert.match(r.stdout, new RegExp(`no -deep twin "${twin}"`));
+    } finally {
+      fs.renameSync(`${file}.off`, file);
     }
   });
 }

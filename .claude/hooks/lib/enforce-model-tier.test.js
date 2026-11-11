@@ -14,10 +14,10 @@ after(() => fs.rmSync(root, { recursive: true, force: true }));
 fs.mkdirSync(path.join(root, '.claude', 'agents'), { recursive: true });
 const agent = (name, model) =>
   fs.writeFileSync(path.join(root, '.claude', 'agents', `${name}.md`), `---\r\nname: ${name}\r\nmodel: ${model}\r\n---\r\nbody\r\n`);
-agent('reviewer', 'opus');
-agent('executor', 'sonnet');
+agent('reviewer', 'fable');
+agent('executor', 'fable');
+agent('verifier', 'opus');
 agent('explorer', 'haiku');
-agent('rogue', 'fable');
 
 function verdict(toolInput) {
   const r = spawnSync(process.execPath, [HOOK], {
@@ -29,17 +29,19 @@ function verdict(toolInput) {
 }
 
 const cases = [
-  ['no override on a pinned agent', { subagent_type: 'reviewer', prompt: 'x' }, 0],
-  ['same-family alias override', { subagent_type: 'reviewer', model: 'opus', prompt: 'x' }, 0],
-  ['same-family full id override', { subagent_type: 'executor', model: 'claude-sonnet-5-5', prompt: 'x' }, 0],
-  ['reviewer downgraded to sonnet', { subagent_type: 'reviewer', model: 'sonnet', prompt: 'x' }, 2],
-  ['executor upgraded to opus', { subagent_type: 'executor', model: 'opus', prompt: 'x' }, 2],
-  ['explorer upgraded via full id', { subagent_type: 'explorer', model: 'claude-opus-5-5', prompt: 'x' }, 2],
+  ['no override on a fable agent', { subagent_type: 'reviewer', prompt: 'x' }, 0],
+  ['fable agent, same-family alias override', { subagent_type: 'reviewer', model: 'fable', prompt: 'x' }, 0],
+  ['fable agent, same-family full id override', { subagent_type: 'executor', model: 'claude-fable-5-1', prompt: 'x' }, 0],
+  ['opus agent, same-family alias override', { subagent_type: 'verifier', model: 'opus', prompt: 'x' }, 0],
+  ['opus agent, same-family full id override', { subagent_type: 'verifier', model: 'claude-opus-5-5', prompt: 'x' }, 0],
+  ['fable agent downgraded to opus', { subagent_type: 'reviewer', model: 'opus', prompt: 'x' }, 2],
+  ['fable agent downgraded to sonnet', { subagent_type: 'executor', model: 'sonnet', prompt: 'x' }, 2],
+  ['opus agent switched to fable', { subagent_type: 'verifier', model: 'fable', prompt: 'x' }, 2],
+  ['haiku agent upgraded to fable', { subagent_type: 'explorer', model: 'fable', prompt: 'x' }, 2],
+  ['haiku agent upgraded via full id', { subagent_type: 'explorer', model: 'claude-opus-5-5', prompt: 'x' }, 2],
   ['inherit on a pinned agent', { subagent_type: 'reviewer', model: 'inherit', prompt: 'x' }, 2],
-  ['fable requested explicitly', { subagent_type: 'reviewer', model: 'fable', prompt: 'x' }, 2],
-  ['fable via full id', { subagent_type: 'general-purpose', model: 'claude-fable-5-1', prompt: 'x' }, 2],
-  ['agent file itself pinned to fable', { subagent_type: 'rogue', prompt: 'x' }, 2],
   ['built-in agent, no override', { subagent_type: 'general-purpose', prompt: 'x' }, 0],
+  ['built-in agent, fable override', { subagent_type: 'general-purpose', model: 'claude-fable-5-1', prompt: 'x' }, 0],
   ['built-in agent, non-fable override', { subagent_type: 'Explore', model: 'haiku', prompt: 'x' }, 0],
   ['no subagent_type', { prompt: 'x' }, 0],
   ['path-traversal agent name is ignored', { subagent_type: '../../etc/passwd', model: 'opus', prompt: 'x' }, 0],
