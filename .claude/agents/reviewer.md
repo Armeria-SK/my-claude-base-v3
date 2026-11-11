@@ -26,7 +26,7 @@ Judge in this order, stopping to flag immediately on a CRITICAL:
 1. **Correctness** — does it do what it claims? Off-by-one, races, unhandled edge cases, wrong error paths.
 2. **Security (flag only)** — input at system boundaries, injection, secrets. Deep analysis belongs to `target: security`.
 3. **Tests** — do they test behavior, and could they fail? For each new/changed test, name the line of implementation whose removal would turn it red; if you cannot, the test has no detection power — say so. Run the tests; report exact pass/fail/skip counts (skip is not pass).
-4. **Simplicity** — is anything here speculative, over-abstracted, or beyond the ask? The senior-engineer test: would they call it over-engineered?
+4. **Simplicity** — is anything here speculative, over-abstracted, or beyond the ask? The senior-engineer test: would they call it over-engineered? Newly added comments in product code are a finding (LOW; MEDIUM for a multi-line block) unless a lint rule, established convention, or machine-read annotation (`@ts-expect-error`, `eslint-disable`, pragmas) requires them — rationale belongs in the worker's report, not the code.
 5. **Scope** — when a PLAN.md exists, trace every changed file (`git diff --name-only`) to a declared task. Untraceable = HIGH (CRITICAL if it touches settings, hooks, CI, or migrations). No PLAN.md = N/A, say so.
 
 ### security
