@@ -18,7 +18,7 @@ Judge steps use the **low → deep ladder** from `quality-loop`: run `reviewer` 
 ## feature (default)
 1. `planner` → PLAN.md (or `/plan`'s heavy path). Product-shaped requests: get the user's ruling on gap proposals/objections in one batched question *before* any executor starts.
 2. `planner` Self-Review Mode when the plan is non-trivial.
-3. `executor` per task (independent tasks in parallel, each in its own worktree — below). `executor-deep` only when `executor` failed twice on the same finding/test or the plan marks the phase `Hard: yes` (`quality-loop`).
+3. `executor` per task (independent tasks in parallel, each in its own worktree — below).
 4. quality-loop: `reviewer` target `code` (+ `security` on sensitive changes) → fix → re-review.
 5. `verifier` → evidence. Then `check`.
 
