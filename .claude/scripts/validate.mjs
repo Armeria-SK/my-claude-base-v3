@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Harness integrity check: node .claude/scripts/validate.mjs   (exit 0 = PASS, 1 = FAIL)
-// Mechanizes what CLAUDE.md §2 states as policy: model tiers, effort pins, the low/-deep
+// Mechanizes what CLAUDE.md §2 states as policy: model tiers, effort pins, the first-pass/-deep
 // pairs, read-only tool lists, hook wiring, and dangling references to removed machinery.
 
 import fs from "node:fs";
@@ -15,11 +15,11 @@ const fail = (where, msg) => findings.push(`${where}: ${msg}`);
 
 // ---- tier table: the single source of truth these checks enforce (mirrors CLAUDE.md §2)
 const TIERS = {
-  planner: { model: "fable", effort: "low", twin: "planner-deep" },
-  reviewer: { model: "fable", effort: "low", twin: "reviewer-deep" },
-  executor: { model: "fable", effort: "low" },
-  "planner-deep": { model: "fable", effort: "medium" },
-  "reviewer-deep": { model: "fable", effort: "medium" },
+  planner: { model: "opus", effort: "medium", twin: "planner-deep" },
+  reviewer: { model: "opus", effort: "xhigh", twin: "reviewer-deep" },
+  executor: { model: "opus", effort: "medium" },
+  "planner-deep": { model: "opus", effort: "xhigh" },
+  "reviewer-deep": { model: "opus", effort: "max" },
   debugger: { model: "opus", effort: "medium" },
   verifier: { model: "opus", effort: "medium" },
   explorer: { model: "haiku", effort: null },
@@ -70,7 +70,7 @@ for (const f of agentFiles) {
 }
 for (const [name, tier] of Object.entries(TIERS)) {
   if (!agents.has(name)) fail(`agents/${name}.md`, "listed in the tier table but missing");
-  if (tier.twin && !agents.has(tier.twin)) fail(`agents/${name}.md`, `low-effort role has no -deep twin "${tier.twin}"`);
+  if (tier.twin && !agents.has(tier.twin)) fail(`agents/${name}.md`, `first-pass role has no -deep twin "${tier.twin}"`);
 }
 for (const name of JUDGES) {
   const f = path.join(agentDir, `${name}.md`);
