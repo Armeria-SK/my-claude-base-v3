@@ -19,7 +19,7 @@ Writer and judge are different instances in independent contexts. The judge is F
 | Role | Agent | Model / effort |
 |---|---|---|
 | Worker | code = `executor` (or `debugger`); plan = `planner` | fable low (`debugger`: opus medium) / fable low |
-| Worker, escalation | `executor-deep` — only when `executor` failed on the same point twice or the plan marks the step hard; never the first pass | fable medium |
+| Worker, escalation | `executor-deep` — only when `executor` failed twice on the same finding/test or the phase is marked `Hard: yes`; see below | fable medium |
 | Judge, first pass | code = `reviewer`; plan = `planner` (Self-Review Mode) | fable low |
 | Judge, confirming pass | `reviewer-deep` / `planner-deep` | fable medium |
 | Evidence check | `verifier` (after APPROVE, code only) | opus medium |
@@ -49,10 +49,10 @@ Dispatch the -deep judge with: the artifact path, the PLAN.md path, the low repo
 The -deep judge runs at most once per loop cycle, and never as the first pass.
 
 ### Fix-backs resume the same worker
-When a judge or the verifier returns findings to fix, resume the worker that wrote the change (`SendMessage` to its agent ID / name; it keeps its full context) and pass the findings verbatim, instead of dispatching a fresh worker. A fresh worker re-reads the plan and code (more cost, more rounds); the original author knows why it wrote what it wrote. Start a fresh worker only when the original's context is near full, it was stopped, or it is a one-shot built-in type (`Explore` / `Plan`) that cannot be resumed. If a resume fails, fall back to a fresh dispatch and say so in the report.
+When a judge or the verifier returns findings to fix, resume the worker that wrote the change (`SendMessage` to its agent ID / name; it keeps its full context) and pass the findings verbatim, instead of dispatching a fresh worker. A fresh worker re-reads the plan and code (more cost, more rounds); the original author knows why it wrote what it wrote. Start a fresh worker only when the original's context is near full, it was stopped, it is being escalated to `executor-deep` (a different agent), or it is a one-shot built-in type (`Explore` / `Plan`) that cannot be resumed. If a resume fails, fall back to a fresh dispatch and say so in the report.
 
 ### Escalate the worker to `executor-deep`
-Only when `executor` failed on the same point twice, or PLAN.md marks the step as hard; hand it the PLAN.md path and the failed `executor` report. Never the first pass. If `executor-deep` fails too, replan from a different angle (CLAUDE.md §1.5).
+Only when `executor` failed twice on the same point — the same review finding still open, or the same test still failing, after the original change and one fix-back — or when PLAN.md marks the phase `Hard: yes — <reason>` (planner's format). Never the default first pass: an unmarked phase that has not failed twice goes to `executor`. Order against the judge ladder: when the repeat finding also triggers the -deep judge (trigger 2 above), the -deep judge confirms first; if the finding stands, the next fix goes to `executor-deep`. Hand it the PLAN.md path and the failed `executor` report. If `executor-deep` fails too, replan from a different angle (CLAUDE.md §1.5).
 
 ## Cycle-3 carryover
 If cycle 3 still ends in REQUEST_CHANGES, stop looping. Report to the user: what was fixed, what remains (finding, severity, file:line, why it did not converge), and your recommendation. The verifier still runs on the current state so the report says exactly what is proven.

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Harness integrity check: node .claude/scripts/validate.mjs   (exit 0 = PASS, 1 = FAIL)
 // Mechanizes what CLAUDE.md §2 states as policy: model tiers, effort pins, the low/-deep
-// pairs, read-only tool lists, hook wiring, and dangling references to removed machinery.
+// pairs (and executor/executor-deep body sync), read-only tool lists, hook wiring, and dangling references to removed machinery.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -73,6 +73,17 @@ for (const [name, tier] of Object.entries(TIERS)) {
   if (!agents.has(name)) fail(`agents/${name}.md`, "listed in the tier table but missing");
   if (tier.twin && !agents.has(tier.twin)) fail(`agents/${name}.md`, `low-effort role has no -deep twin "${tier.twin}"`);
 }
+// executor-deep is executor's role at higher effort: everything from "## Protocol" on must not drift.
+const roleBody = (name) => {
+  const f = path.join(agentDir, `${name}.md`);
+  if (!fs.existsSync(f)) return null;
+  const t = read(f);
+  const i = t.indexOf("\n## Protocol");
+  return i < 0 ? "" : t.slice(i);
+};
+const exBody = roleBody("executor");
+const deepBody = roleBody("executor-deep");
+if (exBody !== null && deepBody !== null && (!exBody || exBody !== deepBody)) fail("agents/executor-deep.md", 'body from "## Protocol" on must be identical to executor.md');
 for (const name of JUDGES) {
   const f = path.join(agentDir, `${name}.md`);
   if (!fs.existsSync(f)) continue;

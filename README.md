@@ -6,7 +6,7 @@ Claude 5 世代のモデル構成に合わせて作り直した Claude Code 用�
 
 | 役割 | モデル・エフォート | エージェント |
 |---|---|---|
-| 計画・レビュー・実装・重大な判断 | **Fable**：まず `low`、決着しなければ（実装は同じ点で2回失敗したか、計画書が難所と印を付けた手順だけ）`medium` で確認 | `planner` / `reviewer` / `executor` → `planner-deep` / `reviewer-deep` / `executor-deep` |
+| 計画・レビュー・実装・重大な判断 | **Fable**：まず `low`、決着しなければ（実装は同じ指摘・同じテストで2回失敗したか、計画書の手順に `Hard: yes` の印があるときだけ）`medium` で確認 | `planner` / `reviewer` / `executor` → `planner-deep` / `reviewer-deep` / `executor-deep` |
 | デバッグ・検証 | **Opus `medium`** | `debugger` / `verifier` |
 | grep・ファイル操作などの単純作業 | **Haiku** | `explorer` / `chore` |
 | 指揮者（この会話そのもの） | Opus `medium`（`.claude/settings.json`。重い作業のときだけ利用者が手で Fable `low` に切り替える。設定ファイルは変えない） | — |

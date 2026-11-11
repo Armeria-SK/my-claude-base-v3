@@ -31,11 +31,13 @@ You think before anyone writes code. **Two modes, chosen by the dispatch:** Plan
 ## Assumptions     unconfirmed premises
 ## Approach        the chosen design in a few lines
 ## Rejected alternatives
-## Phases          per phase: files, verification, dependencies
+## Phases          per phase: files, verification, dependencies; `Hard: yes — <reason>` on a phase that is hard (omitted otherwise)
 ## Risks           and how each is contained
 ## Verification    how the whole thing is proven (commands, tests, evidence)
 ## Proposals (need a ruling)
 ```
+`Hard: yes — <reason>` is the marker the conductor reads to start that phase on `executor-deep` (CLAUDE.md §2). Mark only a phase whose difficulty you can name; an unmarked phase starts on `executor`.
+
 A small, obvious task gets a checklist in `tasks/todo.md` instead — do not write a PLAN.md for a 3-line change.
 
 ## Self-Review Mode

@@ -23,6 +23,8 @@ const cases = [
   ['executor model fable->opus', '.claude/agents/executor.md', /^model: fable/m, 'model: opus'],
   ['executor-deep effort medium->low', '.claude/agents/executor-deep.md', /^effort: medium/m, 'effort: low'],
   ['executor-deep model fable->opus', '.claude/agents/executor-deep.md', /^model: fable/m, 'model: opus'],
+  ['executor-deep body drifts from executor', '.claude/agents/executor-deep.md', /^2\. \*\*Baseline\.\*\*/m, '2. **Baseline!**'],
+  ['executor body drifts from executor-deep', '.claude/agents/executor.md', /^3\. \*\*Implement\.\*\*/m, '3. **Implement!**'],
   ['debugger model opus->fable', '.claude/agents/debugger.md', /^model: opus/m, 'model: fable'],
   ['verifier effort medium->xhigh', '.claude/agents/verifier.md', /^effort: medium/m, 'effort: xhigh'],
   ['reviewer-deep gains Write', '.claude/agents/reviewer-deep.md', /^tools: Bash, Glob, Grep, Read/m, 'tools: Bash, Glob, Grep, Read, Write'],
