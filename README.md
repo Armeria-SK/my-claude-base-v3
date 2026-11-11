@@ -11,7 +11,7 @@ Claude 5 世代のモデル構成に合わせて作り直した Claude Code 用�
 | grep・ファイル操作などの単純作業 | **Haiku** | `explorer` / `chore` |
 | 指揮者（この会話そのもの） | Opus `medium`（`.claude/settings.json`。重い作業のときだけ利用者が手で Fable `low` に切り替える。設定ファイルは変えない） | — |
 
-エフォートは呼び出しごとには変えられない仕様のため、Fable の役割だけ「low 版」と「medium 版（`-deep`）」の2体を用意しています。`-deep` に上げる条件は [CLAUDE.md §2](CLAUDE.md) と `quality-loop` スキルに書いてあります。Fable の役割が利用上限（クレジット不足・レート制限）で止まったときだけ、指揮者が同じ役割を Opus で出し直します（[CLAUDE.md §2](CLAUDE.md)）。階層のずれは `enforce-model-tier.js`（呼び出し時）と `validate.mjs`（定義ファイル）が機械的に止めます。
+エフォートは各エージェントの定義ファイルで固定し、呼び出しごとの上書きは `enforce-model-tier.js` が止める（例外は利用上限の出し直しだけ）ため、Fable の役割だけ「low 版」と「medium 版（`-deep`）」の2体を用意し、引き上げを目に見える手順にしています。`-deep` に上げる条件は [CLAUDE.md §2](CLAUDE.md) と `quality-loop` スキルに書いてあります。Fable の役割が利用上限（クレジット不足・レート制限）で止まったときだけ、指揮者が同じ役割を Opus で出し直します（[CLAUDE.md §2](CLAUDE.md)）。階層のずれは `enforce-model-tier.js`（呼び出し時）と `validate.mjs`（定義ファイル）が機械的に止めます。
 
 ## はじめかた
 ```bash

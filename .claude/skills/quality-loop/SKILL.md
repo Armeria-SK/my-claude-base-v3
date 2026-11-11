@@ -12,7 +12,7 @@ user-invocable: true
 
 # Quality Loop — low first, medium to confirm
 
-Writer and judge are different instances in independent contexts. The judge is Fable: **low effort first, medium only when low cannot settle it.** Effort is declared in each agent's frontmatter, not per dispatch, so the two levels are two agents: `reviewer` / `planner` (low) and `reviewer-deep` / `planner-deep` (medium).
+Writer and judge are different instances in independent contexts. The judge is Fable: **low effort first, medium only when low cannot settle it.** Effort is pinned in each agent's frontmatter (the hook denies a per-dispatch `effort`, except the usage-limit fallback), so the two levels are two agents: `reviewer` / `planner` (low) and `reviewer-deep` / `planner-deep` (medium).
 
 ## Roles
 
