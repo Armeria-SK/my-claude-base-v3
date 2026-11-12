@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const rel = (p) => path.relative(ROOT, p).split(path.sep).join("/");
@@ -144,6 +145,15 @@ for (const p of scan) {
     if (!sections.has(m[1])) fail(rel(p), `cites CLAUDE.md §${m[1]}, which does not exist`);
   }
 }
+
+// ---- 5. Fable mode: its agents are real roster entries, its file stays untracked, a present file is valid
+const { AGENTS: FABLE_AGENTS, FILE: FABLE_FILE, readFableMode } = createRequire(import.meta.url)("../hooks/lib/fable-mode.js");
+for (const a of FABLE_AGENTS) if (!TIERS[a]) fail("hooks/lib/fable-mode.js", `Fable mode lists "${a}", which is not in the tier table`);
+const fableRel = FABLE_FILE.split(path.sep).join("/");
+const gitignore = fs.existsSync(path.join(ROOT, ".gitignore")) ? read(path.join(ROOT, ".gitignore")) : "";
+if (!gitignore.split("\n").some((l) => l.trim() === fableRel)) fail(".gitignore", `must ignore ${fableRel}`);
+const fableMode = readFableMode(ROOT);
+if (fableMode.error) fail(fableRel, `${fableMode.error} (mode is treated as OFF; run /fable on or /fable off)`);
 
 // ---- report
 for (const f of findings) console.log(`FINDING  ${f}`);

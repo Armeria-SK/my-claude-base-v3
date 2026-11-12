@@ -13,7 +13,7 @@ user-invocable: true
 
 # Quality Loop — first pass, then -deep to confirm
 
-Writer and judge are different instances in independent contexts. The judge is Opus: **the first-pass agent first, its `-deep` twin only when the first pass cannot settle it.** Effort is pinned in each agent's frontmatter (the hook denies a per-dispatch `effort`, except the usage-limit fallback), so the two levels are two agents: `reviewer` (xhigh) → `reviewer-deep` (max), `planner` (medium) → `planner-deep` (xhigh).
+Writer and judge are different instances in independent contexts. The judge is Opus: **the first-pass agent first, its `-deep` twin only when the first pass cannot settle it.** Effort is pinned in each agent's frontmatter (the hook denies a per-dispatch `effort`, except the usage-limit fallback and Fable mode), so the two levels are two agents: `reviewer` (xhigh) → `reviewer-deep` (max), `planner` (medium) → `planner-deep` (xhigh).
 
 ## Roles
 
@@ -52,7 +52,7 @@ The -deep judge runs at most once per loop cycle, and never as the first pass.
 When a judge or the verifier returns findings to fix, resume the worker that wrote the change (`SendMessage` to its agent ID / name; it keeps its full context) and pass the findings verbatim, instead of dispatching a fresh worker. A fresh worker re-reads the plan and code (more cost, more rounds); the original author knows why it wrote what it wrote. Start a fresh worker only when the original's context is near full, it was stopped, or it is a one-shot built-in type (`Explore` / `Plan`) that cannot be resumed. If a resume fails, fall back to a fresh dispatch and say so in the report.
 
 ### Usage-limit fallback
-If an agent set to Fable (none today) dies on a billing / credit / rate-limit error, restart that role on Opus per CLAUDE.md §2: a fresh dispatch, not a fix-back, and say so in the report.
+If an agent running on Fable (Fable mode, or an agent file set to Fable) dies on a billing / credit / rate-limit error, restart that role on Opus per CLAUDE.md §2: a fresh dispatch, not a fix-back, and say so in the report.
 
 ## Cycle-3 carryover
 If cycle 3 still ends in REQUEST_CHANGES, stop looping. Report to the user: what was fixed, what remains (finding, severity, file:line, why it did not converge), and your recommendation. The verifier still runs on the current state so the report says exactly what is proven.

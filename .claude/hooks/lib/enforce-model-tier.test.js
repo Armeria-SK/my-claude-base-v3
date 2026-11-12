@@ -103,3 +103,71 @@ test('malformed stdin fails open', () => {
   const r = spawnSync(process.execPath, [HOOK], { input: 'not json', encoding: 'utf8' });
   assert.strictEqual(r.status, 0);
 });
+
+const modeRoot = (modeJson) => {
+  const r = fs.mkdtempSync(path.join(os.tmpdir(), 'tier-mode-'));
+  after(() => fs.rmSync(r, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(r, '.claude', 'agents'), { recursive: true });
+  for (const [name, effort] of [['planner', 'medium'], ['executor', 'medium'], ['reviewer', 'xhigh'], ['reviewer-deep', 'max'], ['debugger', 'medium']]) {
+    fs.writeFileSync(path.join(r, '.claude', 'agents', `${name}.md`), `---\nname: ${name}\nmodel: opus\neffort: ${effort}\n---\nbody\n`);
+  }
+  if (modeJson != null) fs.writeFileSync(path.join(r, '.claude', 'fable-mode.json'), modeJson);
+  return r;
+};
+const verdictIn = (r, toolInput) => {
+  const p = spawnSync(process.execPath, [HOOK], {
+    input: JSON.stringify({ tool_name: 'Agent', tool_input: toolInput, cwd: r }),
+    env: { ...process.env, CLAUDE_PROJECT_DIR: r },
+    encoding: 'utf8',
+  });
+  return { exit: p.status, stderr: p.stderr };
+};
+const fable = (effort) => ({ model: 'fable', effort });
+const onRoot = modeRoot(JSON.stringify({ executor: fable('low'), reviewer: fable('low'), 'reviewer-deep': fable('medium') }));
+const offRoot = modeRoot(null);
+
+const modeCases = [
+  ['mode on: listed agent, fable at the mapped effort', onRoot, { subagent_type: 'executor', model: 'fable', effort: 'low' }, 0],
+  ['mode on: listed agent, fable full id at the mapped effort', onRoot, { subagent_type: 'reviewer-deep', model: 'claude-fable-5-1', effort: 'medium' }, 0],
+  ['mode on: listed agent with no model is denied', onRoot, { subagent_type: 'executor' }, 2, /model: "fable", effort: "low"/],
+  ['mode on: listed agent, effort only, no model', onRoot, { subagent_type: 'reviewer', effort: 'xhigh' }, 2, /FABLE MODE/],
+  ['mode on: listed agent, fable without effort', onRoot, { subagent_type: 'executor', model: 'fable' }, 2, /effort "low"/],
+  ['mode on: listed agent, fable at another effort', onRoot, { subagent_type: 'executor', model: 'fable', effort: 'medium' }, 2],
+  ['mode on: opus fallback at the agent\'s own effort', onRoot, { subagent_type: 'reviewer', model: 'opus', effort: 'xhigh' }, 0],
+  ['mode on: opus fallback with no effort', onRoot, { subagent_type: 'executor', model: 'opus' }, 0],
+  ['mode on: opus at a different effort', onRoot, { subagent_type: 'executor', model: 'opus', effort: 'low' }, 2],
+  ['mode on: listed agent on sonnet', onRoot, { subagent_type: 'executor', model: 'sonnet', effort: 'low' }, 2],
+  ['mode on: unlisted agent with no model', onRoot, { subagent_type: 'planner' }, 0],
+  ['mode on: unlisted agent on fable', onRoot, { subagent_type: 'debugger', model: 'fable', effort: 'low' }, 2],
+  ['mode on: built-in agent untouched', onRoot, { subagent_type: 'general-purpose' }, 0],
+  ['mode off: no model allowed', offRoot, { subagent_type: 'executor' }, 0],
+  ['mode off: fable denied', offRoot, { subagent_type: 'executor', model: 'fable', effort: 'low' }, 2],
+];
+for (const [name, r, input, exit, re] of modeCases) {
+  test(name, () => {
+    const v = verdictIn(r, { prompt: 'x', ...input });
+    assert.strictEqual(v.exit, exit, v.stderr);
+    if (exit === 2) assert.match(v.stderr, re || /BLOCKED/);
+  });
+}
+
+const malformed = [
+  ['not JSON', '{executor: low'],
+  ['empty object', '{}'],
+  ['an array', '[]'],
+  ['unknown agent', JSON.stringify({ executor: fable('low'), debugger: fable('low') })],
+  ['model other than fable', JSON.stringify({ executor: { model: 'opus', effort: 'low' } })],
+  ['effort out of range', JSON.stringify({ executor: fable('turbo') })],
+  ['effort missing', JSON.stringify({ executor: { model: 'fable' } })],
+  ['extra key', JSON.stringify({ executor: { ...fable('low'), note: 'x' } })],
+  ['bare effort string', JSON.stringify({ executor: 'low' })],
+];
+for (const [name, json] of malformed) {
+  test(`malformed mode file (${name}) fails closed to today's rules`, () => {
+    const r = modeRoot(json);
+    assert.strictEqual(verdictIn(r, { subagent_type: 'executor', prompt: 'x' }).exit, 0);
+    const v = verdictIn(r, { subagent_type: 'executor', model: 'fable', effort: 'low', prompt: 'x' });
+    assert.strictEqual(v.exit, 2);
+    assert.match(v.stderr, /Fable mode is OFF: .*fable-mode\.json/);
+  });
+}

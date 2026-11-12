@@ -12,7 +12,7 @@ Claude 5 世代のモデル構成に合わせて作り直した Claude Code 用�
 | grep・ファイル操作などの単純作業 | **Haiku** | `explorer` / `chore` |
 | 指揮者（この会話そのもの） | Opus `medium`（`.claude/settings.json`） | — |
 
-エフォートは各エージェントの定義ファイルで固定し、呼び出しごとの上書きは `enforce-model-tier.js` が止める（例外は利用上限の出し直しだけ）ため、計画・レビューの役割だけ「初回版」と一段上のエフォートの「確認版（`-deep`）」の2体を用意し、引き上げを目に見える手順にしています。`-deep` に上げる条件は [CLAUDE.md §2](CLAUDE.md) と `quality-loop` スキルに書いてあります。今は Fable の役割はありませんが、将来どれかを Fable にした場合に備え、利用上限（クレジット不足・レート制限）で止まったら指揮者が同じ役割を Opus で出し直す決まりは残してあります（[CLAUDE.md §2](CLAUDE.md)）。階層のずれは `enforce-model-tier.js`（呼び出し時）と `validate.mjs`（定義ファイル）が機械的に止めます。
+エフォートは各エージェントの定義ファイルで固定し、呼び出しごとの上書きは `enforce-model-tier.js` が止める（例外は利用上限の出し直しと Fable モードだけ）ため、計画・レビューの役割だけ「初回版」と一段上のエフォートの「確認版（`-deep`）」の2体を用意し、引き上げを目に見える手順にしています。`-deep` に上げる条件は [CLAUDE.md §2](CLAUDE.md) と `quality-loop` スキルに書いてあります。大きな実装のときは `/fable on` で一部の役割（planner / executor / reviewer と -deep 版）を Fable に切り替えられ、`/fable off` で通常の Opus に戻ります。新しいセッションでは、対象の役割を初めて呼ぶ前に、このモードを続けるか（または入れるか）を指揮者が聞きます。Fable で動く役割が利用上限（クレジット不足・レート制限）で止まったら、指揮者が同じ役割を Opus で出し直します（[CLAUDE.md §2](CLAUDE.md)）。階層のずれは `enforce-model-tier.js`（呼び出し時）と `validate.mjs`（定義ファイル）が機械的に止めます。
 
 ## はじめかた
 ```bash
