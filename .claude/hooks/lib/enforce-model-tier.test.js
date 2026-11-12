@@ -103,3 +103,122 @@ test('malformed stdin fails open', () => {
   const r = spawnSync(process.execPath, [HOOK], { input: 'not json', encoding: 'utf8' });
   assert.strictEqual(r.status, 0);
 });
+
+const modeRoot = (modeJson) => {
+  const r = fs.mkdtempSync(path.join(os.tmpdir(), 'tier-mode-'));
+  after(() => fs.rmSync(r, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(r, '.claude', 'agents'), { recursive: true });
+  for (const [name, effort] of [['planner', 'medium'], ['executor', 'medium'], ['reviewer', 'xhigh'], ['reviewer-deep', 'max'], ['debugger', 'medium']]) {
+    fs.writeFileSync(path.join(r, '.claude', 'agents', `${name}.md`), `---\nname: ${name}\nmodel: opus\neffort: ${effort}\n---\nbody\n`);
+  }
+  if (modeJson != null) fs.writeFileSync(path.join(r, '.claude', 'fable-mode.json'), modeJson);
+  return r;
+};
+const verdictIn = (r, toolInput) => {
+  const p = spawnSync(process.execPath, [HOOK], {
+    input: JSON.stringify({ tool_name: 'Agent', tool_input: toolInput, cwd: r }),
+    env: { ...process.env, CLAUDE_PROJECT_DIR: r },
+    encoding: 'utf8',
+  });
+  return { exit: p.status, stderr: p.stderr };
+};
+const fable = (effort) => ({ model: 'fable', effort });
+const onRoot = modeRoot(JSON.stringify({ executor: fable('low'), reviewer: fable('low'), 'reviewer-deep': fable('medium') }));
+const offRoot = modeRoot(null);
+
+const modeCases = [
+  ['mode on: listed agent, fable at the mapped effort', onRoot, { subagent_type: 'executor', model: 'fable', effort: 'low' }, 0],
+  ['mode on: listed agent, fable full id at the mapped effort', onRoot, { subagent_type: 'reviewer-deep', model: 'claude-fable-5-1', effort: 'medium' }, 0],
+  ['mode on: listed agent with no model is denied', onRoot, { subagent_type: 'executor' }, 2, /model: "fable", effort: "low"/],
+  ['mode on: listed agent, effort only, no model', onRoot, { subagent_type: 'reviewer', effort: 'xhigh' }, 2, /FABLE MODE/],
+  ['mode on: listed agent, fable without effort', onRoot, { subagent_type: 'executor', model: 'fable' }, 2, /effort "low"/],
+  ['mode on: listed agent, fable at another effort', onRoot, { subagent_type: 'executor', model: 'fable', effort: 'medium' }, 2],
+  ['mode on: opus fallback at the agent\'s own effort', onRoot, { subagent_type: 'reviewer', model: 'opus', effort: 'xhigh' }, 0],
+  ['mode on: opus fallback with no effort', onRoot, { subagent_type: 'executor', model: 'opus' }, 0],
+  ['mode on: opus at a different effort', onRoot, { subagent_type: 'executor', model: 'opus', effort: 'low' }, 2],
+  ['mode on: listed agent on sonnet', onRoot, { subagent_type: 'executor', model: 'sonnet', effort: 'low' }, 2],
+  ['mode on: unlisted agent with no model', onRoot, { subagent_type: 'planner' }, 0],
+  ['mode on: unlisted agent on fable', onRoot, { subagent_type: 'debugger', model: 'fable', effort: 'low' }, 2],
+  ['mode on: built-in agent untouched', onRoot, { subagent_type: 'general-purpose' }, 0],
+  ['mode off: no model allowed', offRoot, { subagent_type: 'executor' }, 0],
+  ['mode off: fable denied', offRoot, { subagent_type: 'executor', model: 'fable', effort: 'low' }, 2],
+];
+for (const [name, r, input, exit, re] of modeCases) {
+  test(name, () => {
+    const v = verdictIn(r, { prompt: 'x', ...input });
+    assert.strictEqual(v.exit, exit, v.stderr);
+    if (exit === 2) assert.match(v.stderr, re || /BLOCKED/);
+  });
+}
+
+const malformed = [
+  ['not JSON', '{executor: low'],
+  ['empty object', '{}'],
+  ['an array', '[]'],
+  ['unknown agent', JSON.stringify({ executor: fable('low'), debugger: fable('low') })],
+  ['model other than fable', JSON.stringify({ executor: { model: 'opus', effort: 'low' } })],
+  ['effort out of range', JSON.stringify({ executor: fable('turbo') })],
+  ['effort missing', JSON.stringify({ executor: { model: 'fable' } })],
+  ['extra key', JSON.stringify({ executor: { ...fable('low'), note: 'x' } })],
+  ['bare effort string', JSON.stringify({ executor: 'low' })],
+];
+for (const [name, json] of malformed) {
+  test(`malformed mode file (${name}) fails closed to today's rules`, () => {
+    const r = modeRoot(json);
+    assert.strictEqual(verdictIn(r, { subagent_type: 'executor', prompt: 'x' }).exit, 0);
+    const v = verdictIn(r, { subagent_type: 'executor', model: 'fable', effort: 'low', prompt: 'x' });
+    assert.strictEqual(v.exit, 2);
+    assert.match(v.stderr, /Fable mode is OFF: .*fable-mode\.json/);
+  });
+}
+
+test('a deeply nested mode file never crashes the hook: today\'s rules still deny', () => {
+  const deep = '['.repeat(10000) + ']'.repeat(10000);
+  for (const json of [`{"executor":{"model":${deep},"effort":"low"}}`, `{"executor":{"model":"fable","effort":${deep}}}`]) {
+    const r = modeRoot(json);
+    const v = verdictIn(r, { subagent_type: 'executor', model: 'sonnet', prompt: 'x' });
+    assert.strictEqual(v.exit, 2, v.stderr);
+    assert.match(v.stderr, /BLOCKED[\s\S]*Fable mode is OFF/);
+    assert.strictEqual(verdictIn(r, { subagent_type: 'executor', effort: 'max', prompt: 'x' }).exit, 2);
+  }
+});
+
+test('mode on: the no-model deny offers opus only as the post-usage-limit re-run', () => {
+  const v = verdictIn(onRoot, { subagent_type: 'executor', prompt: 'x' });
+  assert.match(v.stderr, /model: "opus" at its own effort is only for re-running after a Fable run ended on a usage-limit error/);
+  assert.doesNotMatch(v.stderr, /\(or model: "opus"/);
+});
+
+test('deeply nested payload values cannot make the hook fail open', () => {
+  const deep = '['.repeat(10000) + '"opus"' + ']'.repeat(10000);
+  const deny = [
+    ['effort with no model', onRoot, { subagent_type: 'debugger', effort: 'DEEP' }],
+    ['effort on a pinned fixture agent', root, { subagent_type: 'verifier', effort: 'DEEP' }],
+    ['model', root, { subagent_type: 'verifier', model: 'DEEP' }],
+    ['model with effort', root, { subagent_type: 'reviewer', model: 'DEEP', effort: 'medium' }],
+    ['subagent_type', root, { subagent_type: 'DEEP', model: 'sonnet' }],
+    ['fable mode, effort', onRoot, { subagent_type: 'executor', model: 'fable', effort: 'DEEP' }],
+  ];
+  for (const [what, r, input] of deny) {
+    const payload = JSON.stringify({ tool_name: 'Agent', tool_input: { prompt: 'x', ...input }, cwd: r }).replace('"DEEP"', deep);
+    const p = spawnSync(process.execPath, [HOOK], { input: payload, env: { ...process.env, CLAUDE_PROJECT_DIR: r }, encoding: 'utf8' });
+    assert.strictEqual(p.status, 2, `${what}: ${p.stderr.slice(0, 300)}`);
+    assert.match(p.stderr, /BLOCKED/, what);
+    assert.doesNotMatch(p.stderr, /could not evaluate/, `${what} should be denied by its own rule, not the catch-all`);
+  }
+});
+
+test('anything that throws after the payload parses is denied, not let through', () => {
+  const p = spawnSync(process.execPath, ['-e', `
+    const Module = require('module');
+    const load = Module._load;
+    Module._load = function (req, ...rest) {
+      const m = load.call(this, req, ...rest);
+      return req === './lib/fable-mode' ? { readFableMode: () => { throw new TypeError('boom'); } } : m;
+    };
+    process.argv[1] = ${JSON.stringify(HOOK)};
+    require(${JSON.stringify(HOOK)});
+  `], { input: JSON.stringify({ tool_name: 'Agent', tool_input: { subagent_type: 'verifier', prompt: 'x' }, cwd: root }), env: { ...process.env, CLAUDE_PROJECT_DIR: root }, encoding: 'utf8' });
+  assert.strictEqual(p.status, 2, p.stderr);
+  assert.match(p.stderr, /BLOCKED: enforce-model-tier could not evaluate this dispatch \(TypeError\)/);
+});

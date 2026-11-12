@@ -107,3 +107,38 @@ test('an empty or missing tmp/ adds no leftovers block', () => {
   const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: root }), env: { ...process.env, CLAUDE_PROJECT_DIR: root }, encoding: 'utf8' });
   assert.doesNotMatch(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, /TMP LEFTOVERS/);
 });
+
+const fableBlock = (ctx) => ctx.split('=== FABLE MODE ===\n')[1].split('\n\n=== ')[0];
+const toggleCmd = (arg) => `node "${path.join(roots[roots.length - 1], '.claude', 'scripts', 'fable-mode.mjs').split(path.sep).join('/')}" ${arg}`;
+
+test('Fable mode OFF: the state and the once-per-session question are injected', () => {
+  const block = fableBlock(inject({}));
+  assert.match(block, /^FABLE MODE: OFF — planner, executor, reviewer, planner-deep, reviewer-deep/);
+  assert.match(block, /ask the owner once in plain Japanese via AskUserQuestion: stay on the normal Opus roster, or turn Fable mode on/);
+  assert.ok(block.includes(`run \`${toggleCmd('on')}\``), block);
+  assert.ok(path.isAbsolute(roots[roots.length - 1]));
+  assert.match(block, /never dispatch these agents need not ask/);
+  assert.doesNotMatch(block, /WARNING/);
+});
+
+test('Fable mode ON: the mapping and the keep-or-stop question are injected', () => {
+  const on = { executor: { model: 'fable', effort: 'low' }, 'reviewer-deep': { model: 'fable', effort: 'medium' } };
+  const block = fableBlock(inject({ '.claude/fable-mode.json': JSON.stringify(on) }));
+  assert.match(block, /^FABLE MODE: ON — executor=low, reviewer-deep=medium; pass model "fable" \+ that effort/);
+  assert.match(block, /AskUserQuestion: continue with Fable mode, or turn it off/);
+  assert.ok(block.includes(`run \`${toggleCmd('off')}\``), block);
+});
+
+test('Fable mode file malformed: warned and treated as OFF', () => {
+  const block = fableBlock(inject({ '.claude/fable-mode.json': JSON.stringify({ chore: { model: 'fable', effort: 'low' } }) }));
+  assert.match(block, /^WARNING: .*unknown agent "chore"/);
+  assert.match(block, /FABLE MODE: OFF/);
+  assert.doesNotMatch(block, /FABLE MODE: ON/);
+});
+
+test('a deeply nested Fable mode file is warned about, not a crash', () => {
+  const deep = '['.repeat(10000) + ']'.repeat(10000);
+  const block = fableBlock(inject({ '.claude/fable-mode.json': `{"executor":{"model":${deep},"effort":"low"}}` }));
+  assert.match(block, /^WARNING: .*"executor" model must be "fable" \(got object\)/);
+  assert.match(block, /FABLE MODE: OFF/);
+});

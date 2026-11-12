@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // SessionStart hook: inject the resume context into Claude's context.
-//   the latest session report (from the newest tasks/YYYY-MM/DD.md that has one) + todo.md + lessons.md
+//   the Fable mode state (CLAUDE.md §2) + the latest session report (from the newest
+//   tasks/YYYY-MM/DD.md that has one) + todo.md + lessons.md
 // Input: Claude Code hook event JSON on stdin. Fail-open.
 //
 // Budget: combined TOTAL_CAP. On overflow the lowest-priority block is trimmed first
@@ -10,6 +11,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { projectRoot } = require('./lib/journal-util');
+const { AGENTS, readFableMode } = require('./lib/fable-mode');
 
 const TOTAL_CAP = 16 * 1024;
 const MIN_FLOOR = 2 * 1024;
@@ -45,13 +47,35 @@ process.stdin.on('end', () => {
   }
   fit(blocks);
 
-  const out = ['=== CONTEXT: workspace root ==='];
+  const out = ['=== CONTEXT: workspace root ===', `\n=== FABLE MODE ===\n${fableLine(root)}`];
   for (const b of blocks) out.push(`\n=== ${b.label} ===\n${b.text == null ? b.empty : b.text}`);
   const leftovers = tmpLeftovers(path.join(root, 'tmp'));
   if (leftovers) out.push(`\n=== TMP LEFTOVERS ===\n${leftovers}`);
   console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: out.join('\n') } }));
   process.exit(0);
 });
+
+// Injected on and off alike: the owner is asked once per session, before the first dispatch of an
+// agent the mode covers, whether to keep or switch the mode (CLAUDE.md §2, Fable mode).
+function fableLine(root) {
+  const mode = readFableMode(root);
+  const script = path.join(root, '.claude', 'scripts', 'fable-mode.mjs').split(path.sep).join('/');
+  const ask = (choice, arg) =>
+    `Before the first dispatch of ${AGENTS.join(' / ')} in this session, ask the owner once in plain Japanese via AskUserQuestion: ` +
+    `${choice}; if they choose to switch, run \`node "${script}" ${arg}\`. Sessions that never dispatch these agents need not ask.`;
+  if (mode.on) {
+    const map = Object.entries(mode.map).map(([a, e]) => `${a}=${e}`).join(', ');
+    return (
+      `FABLE MODE: ON — ${map}; pass model "fable" + that effort when dispatching these agents (/fable off to stop).\n` +
+      ask('continue with Fable mode, or turn it off', 'off')
+    );
+  }
+  return (
+    (mode.error ? `WARNING: ${mode.error}; the file is ignored (mode treated as OFF) until fixed or removed (/fable off).\n` : '') +
+    `FABLE MODE: OFF — ${AGENTS.join(', ')} run on their normal Opus settings (/fable on to switch).\n` +
+    ask('stay on the normal Opus roster, or turn Fable mode on', 'on')
+  );
+}
 
 // tmp/ is delete-after-use (CLAUDE.md §0). Report what is left so it gets cleaned, but never delete
 // here: a parallel session may still be using those files. Listing only — no recursion beyond sizes.

@@ -2,6 +2,7 @@
 // Mutation check for validate.mjs: each mutation breaks one rule in a real harness file and the
 // validator must FAIL on it; the file is restored afterwards. A validator that cannot fail proves nothing.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import assert from 'node:assert';
@@ -10,7 +11,8 @@ import { spawnSync } from 'node:child_process';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 process.chdir(ROOT);
-const validate = () => spawnSync(process.execPath, ['.claude/scripts/validate.mjs'], { encoding: 'utf8' });
+const { CLAUDE_PROJECT_DIR: _ignored, ...envWithoutProjectDir } = process.env;
+const validate = () => spawnSync(process.execPath, ['.claude/scripts/validate.mjs'], { encoding: 'utf8', env: envWithoutProjectDir });
 
 test('baseline: the harness passes validate', () => {
   const r = validate();
@@ -33,6 +35,7 @@ const cases = [
   ['hook wiring points at a missing file', '.claude/settings.json', /block-no-verify.js/, 'block-no-verify-x.js'],
   ['stale v2 reference', '.claude/skills/check/SKILL.md', /^# Check.*$/m, '# Check — see .fable-status'],
   ['skill frontmatter closer glued to a heading', '.claude/skills/commit/SKILL.md', /^user-invocable: true\n---\n\n/m, 'user-invocable: true\n---# Commit\n\n'],
+  ['Fable mode file no longer gitignored', '.gitignore', /^\.claude\/fable-mode\.json\n?/m, ''],
   ['bad § citation', '.claude/skills/check/SKILL.md', /CLAUDE\.md §1\.2/, 'CLAUDE.md §9.9'],
 ];
 for (const [name, file, re, rep] of cases) {
@@ -61,3 +64,18 @@ for (const twin of ['planner-deep', 'reviewer-deep']) {
     }
   });
 }
+
+test('validate catches: a malformed Fable mode file (in a temp root, never the checkout\'s own file)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-fable-'));
+  try {
+    fs.mkdirSync(path.join(root, '.claude'));
+    const run = () => spawnSync(process.execPath, ['.claude/scripts/validate.mjs'], { encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
+    assert.strictEqual(run().status, 0, 'no mode file in the temp root must pass');
+    fs.writeFileSync(path.join(root, '.claude', 'fable-mode.json'), JSON.stringify({ debugger: { model: 'fable', effort: 'low' } }));
+    const r = run();
+    assert.strictEqual(r.status, 1);
+    assert.match(r.stdout, /fable-mode\.json: .*unknown agent "debugger"/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

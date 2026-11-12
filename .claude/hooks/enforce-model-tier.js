@@ -14,25 +14,33 @@
 // when the dispatch also carries the mapped `effort` (agent effort low -> medium, medium -> xhigh).
 // Dormant while no agent file declares fable; kept for when one does.
 // A missing or different effort is denied, as is every other family pair.
+// Fable mode (.claude/fable-mode.json, CLAUDE.md §2): an agent listed there must be dispatched with
+// model "fable" and its listed effort; no model at all is denied so the mode cannot be skipped. An
+// explicit opus at the agent's own effort stays allowed (the fallback while the mode is on). A
+// malformed mode file counts as off and its problem is appended to any deny message.
 // Allows everything else: no `model` / `effort` given, same family and same effort, built-in agent
 // types without a definition in .claude/agents/ (nothing to compare against).
 //
-// Input: Claude Code hook event JSON on stdin. Fail-open on malformed input.
+// Input: Claude Code hook event JSON on stdin. Fail-open on malformed input (stdin that is not JSON);
+// once the payload parses, a non-string subagent_type or anything that throws while deciding is denied.
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { readFableMode } = require('./lib/fable-mode');
 
 const family = (m) => {
-  const s = String(m || '').toLowerCase();
+  const s = typeof m === 'string' ? m.toLowerCase() : '';
   return ['fable', 'opus', 'sonnet', 'haiku'].find((f) => s.includes(f)) || (s === 'inherit' ? 'inherit' : '');
 };
 
 const FALLBACK_EFFORT = { low: 'medium', medium: 'xhigh' };
 
+const show = (v) => (typeof v === 'string' ? JSON.stringify(v) : typeof v);
+
 // Frontmatter `key: value` pairs of an agent definition, or null when there is no such file.
 // Values are read as validate.mjs reads them (surrounding quotes stripped), plus a trailing `# comment`.
 function readFrontmatter(root, agentType) {
-  if (!/^[\w-]+$/.test(agentType || '')) return null;
+  if (typeof agentType !== 'string' || !/^[\w-]+$/.test(agentType)) return null;
   try {
     const text = fs.readFileSync(path.join(root, '.claude', 'agents', `${agentType}.md`), 'utf8');
     const block = text.replace(/\r\n/g, '\n').match(/^---\n([\s\S]*?)\n---/);
@@ -59,7 +67,19 @@ process.stdin.on('end', () => {
   } catch {
     process.exit(0);
   }
+  try {
+    decide(input, cwd);
+  } catch (e) {
+    process.stderr.write(`BLOCKED: enforce-model-tier could not evaluate this dispatch (${e && e.name}); check its parameters (CLAUDE.md §2).\n`);
+    process.exit(2);
+  }
+});
 
+function decide(input, cwd) {
+  if (input.subagent_type != null && typeof input.subagent_type !== 'string') {
+    process.stderr.write(`BLOCKED: subagent_type must be a string (got ${typeof input.subagent_type}) (CLAUDE.md §2).\n`);
+    process.exit(2);
+  }
   const root = process.env.CLAUDE_PROJECT_DIR || cwd || process.cwd();
   const fm = readFrontmatter(root, input.subagent_type);
   const declared = family(fm && fm.model);
@@ -67,32 +87,47 @@ process.stdin.on('end', () => {
   const requested = family(input.model);
   const effortGiven = input.effort != null && input.effort !== '';
   const effort = typeof input.effort === 'string' ? input.effort.toLowerCase() : null;
+  const mode = fm ? readFableMode(root) : { on: false };
+  const note = mode.error ? `\n(Fable mode is OFF: ${mode.error}. Fix it or run /fable off.)` : '';
+  const deny = (msg) => {
+    process.stderr.write(msg + note + '\n');
+    process.exit(2);
+  };
+
+  const mapped = mode.on && mode.map[input.subagent_type];
+  if (mapped && !input.model) {
+    deny(
+      `BLOCKED: FABLE MODE is on and lists "${input.subagent_type}"; dispatch it with model: "fable", effort: "${mapped}" ` +
+      '(/fable off to stop). model: "opus" at its own effort is only for re-running after a Fable run ended on a usage-limit error. CLAUDE.md §2.'
+    );
+  }
+  if (mapped && requested === 'fable') {
+    if (effort === mapped) process.exit(0);
+    deny(`BLOCKED: FABLE MODE maps "${input.subagent_type}" to effort "${mapped}"; got effort=${effort ?? '(none or not a string)'} (CLAUDE.md §2).`);
+  }
 
   const crossFamily = input.model && declared && declared !== 'inherit' && requested !== declared;
   if (crossFamily && requested === 'opus' && declared === 'fable') {
     const want = FALLBACK_EFFORT[declaredEffort];
     if (want && effort === want) process.exit(0);
-    process.stderr.write(
+    deny(
       `BLOCKED: the opus fallback for fable agent "${input.subagent_type}" must carry effort="${want || '(none: add the agent\'s effort to FALLBACK_EFFORT)'}" ` +
-      '(CLAUDE.md §2, usage-limit fallback).\n'
+      '(CLAUDE.md §2, usage-limit fallback).'
     );
-    process.exit(2);
   }
   if (crossFamily) {
-    process.stderr.write(
+    deny(
       `BLOCKED: agent "${input.subagent_type}" is pinned to ${declared} in its frontmatter; ` +
-      `a per-dispatch model="${input.model}" would bypass the tier. Drop the model parameter ` +
-      '(CLAUDE.md §2). To change a tier, edit the agent file.\n'
+      `a per-dispatch model=${show(input.model)} would bypass the tier. Drop the model parameter ` +
+      '(CLAUDE.md §2). To change a tier, edit the agent file.'
     );
-    process.exit(2);
   }
   if (fm && effortGiven && effort !== declaredEffort) {
-    process.stderr.write(
+    deny(
       `BLOCKED: agent "${input.subagent_type}" is pinned to effort ${declaredEffort || '(none)'} in its frontmatter; ` +
-      `a per-dispatch effort=${JSON.stringify(input.effort)} would bypass the tier. Drop the effort parameter ` +
-      '(CLAUDE.md §2); the only exception is the usage-limit fallback.\n'
+      `a per-dispatch effort=${show(input.effort)} would bypass the tier. Drop the effort parameter ` +
+      '(CLAUDE.md §2); the only exceptions are the usage-limit fallback and Fable mode.'
     );
-    process.exit(2);
   }
   process.exit(0);
-});
+}
