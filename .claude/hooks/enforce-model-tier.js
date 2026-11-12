@@ -21,23 +21,26 @@
 // Allows everything else: no `model` / `effort` given, same family and same effort, built-in agent
 // types without a definition in .claude/agents/ (nothing to compare against).
 //
-// Input: Claude Code hook event JSON on stdin. Fail-open on malformed input.
+// Input: Claude Code hook event JSON on stdin. Fail-open on malformed input (stdin that is not JSON);
+// once the payload parses, a non-string subagent_type or anything that throws while deciding is denied.
 
 const fs = require('node:fs');
 const path = require('node:path');
 const { readFableMode } = require('./lib/fable-mode');
 
 const family = (m) => {
-  const s = String(m || '').toLowerCase();
+  const s = typeof m === 'string' ? m.toLowerCase() : '';
   return ['fable', 'opus', 'sonnet', 'haiku'].find((f) => s.includes(f)) || (s === 'inherit' ? 'inherit' : '');
 };
 
 const FALLBACK_EFFORT = { low: 'medium', medium: 'xhigh' };
 
+const show = (v) => (typeof v === 'string' ? JSON.stringify(v) : typeof v);
+
 // Frontmatter `key: value` pairs of an agent definition, or null when there is no such file.
 // Values are read as validate.mjs reads them (surrounding quotes stripped), plus a trailing `# comment`.
 function readFrontmatter(root, agentType) {
-  if (!/^[\w-]+$/.test(agentType || '')) return null;
+  if (typeof agentType !== 'string' || !/^[\w-]+$/.test(agentType)) return null;
   try {
     const text = fs.readFileSync(path.join(root, '.claude', 'agents', `${agentType}.md`), 'utf8');
     const block = text.replace(/\r\n/g, '\n').match(/^---\n([\s\S]*?)\n---/);
@@ -64,7 +67,19 @@ process.stdin.on('end', () => {
   } catch {
     process.exit(0);
   }
+  try {
+    decide(input, cwd);
+  } catch (e) {
+    process.stderr.write(`BLOCKED: enforce-model-tier could not evaluate this dispatch (${e && e.name}); check its parameters (CLAUDE.md §2).\n`);
+    process.exit(2);
+  }
+});
 
+function decide(input, cwd) {
+  if (input.subagent_type != null && typeof input.subagent_type !== 'string') {
+    process.stderr.write(`BLOCKED: subagent_type must be a string (got ${typeof input.subagent_type}) (CLAUDE.md §2).\n`);
+    process.exit(2);
+  }
   const root = process.env.CLAUDE_PROJECT_DIR || cwd || process.cwd();
   const fm = readFrontmatter(root, input.subagent_type);
   const declared = family(fm && fm.model);
@@ -103,16 +118,16 @@ process.stdin.on('end', () => {
   if (crossFamily) {
     deny(
       `BLOCKED: agent "${input.subagent_type}" is pinned to ${declared} in its frontmatter; ` +
-      `a per-dispatch model="${input.model}" would bypass the tier. Drop the model parameter ` +
+      `a per-dispatch model=${show(input.model)} would bypass the tier. Drop the model parameter ` +
       '(CLAUDE.md §2). To change a tier, edit the agent file.'
     );
   }
   if (fm && effortGiven && effort !== declaredEffort) {
     deny(
       `BLOCKED: agent "${input.subagent_type}" is pinned to effort ${declaredEffort || '(none)'} in its frontmatter; ` +
-      `a per-dispatch effort=${JSON.stringify(input.effort)} would bypass the tier. Drop the effort parameter ` +
+      `a per-dispatch effort=${show(input.effort)} would bypass the tier. Drop the effort parameter ` +
       '(CLAUDE.md §2); the only exceptions are the usage-limit fallback and Fable mode.'
     );
   }
   process.exit(0);
-});
+}

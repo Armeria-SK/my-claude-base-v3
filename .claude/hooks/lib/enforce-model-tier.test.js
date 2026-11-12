@@ -188,3 +188,37 @@ test('mode on: the no-model deny offers opus only as the post-usage-limit re-run
   assert.match(v.stderr, /model: "opus" at its own effort is only for re-running after a Fable run ended on a usage-limit error/);
   assert.doesNotMatch(v.stderr, /\(or model: "opus"/);
 });
+
+test('deeply nested payload values cannot make the hook fail open', () => {
+  const deep = '['.repeat(10000) + '"opus"' + ']'.repeat(10000);
+  const deny = [
+    ['effort with no model', onRoot, { subagent_type: 'debugger', effort: 'DEEP' }],
+    ['effort on a pinned fixture agent', root, { subagent_type: 'verifier', effort: 'DEEP' }],
+    ['model', root, { subagent_type: 'verifier', model: 'DEEP' }],
+    ['model with effort', root, { subagent_type: 'reviewer', model: 'DEEP', effort: 'medium' }],
+    ['subagent_type', root, { subagent_type: 'DEEP', model: 'sonnet' }],
+    ['fable mode, effort', onRoot, { subagent_type: 'executor', model: 'fable', effort: 'DEEP' }],
+  ];
+  for (const [what, r, input] of deny) {
+    const payload = JSON.stringify({ tool_name: 'Agent', tool_input: { prompt: 'x', ...input }, cwd: r }).replace('"DEEP"', deep);
+    const p = spawnSync(process.execPath, [HOOK], { input: payload, env: { ...process.env, CLAUDE_PROJECT_DIR: r }, encoding: 'utf8' });
+    assert.strictEqual(p.status, 2, `${what}: ${p.stderr.slice(0, 300)}`);
+    assert.match(p.stderr, /BLOCKED/, what);
+    assert.doesNotMatch(p.stderr, /could not evaluate/, `${what} should be denied by its own rule, not the catch-all`);
+  }
+});
+
+test('anything that throws after the payload parses is denied, not let through', () => {
+  const p = spawnSync(process.execPath, ['-e', `
+    const Module = require('module');
+    const load = Module._load;
+    Module._load = function (req, ...rest) {
+      const m = load.call(this, req, ...rest);
+      return req === './lib/fable-mode' ? { readFableMode: () => { throw new TypeError('boom'); } } : m;
+    };
+    process.argv[1] = ${JSON.stringify(HOOK)};
+    require(${JSON.stringify(HOOK)});
+  `], { input: JSON.stringify({ tool_name: 'Agent', tool_input: { subagent_type: 'verifier', prompt: 'x' }, cwd: root }), env: { ...process.env, CLAUDE_PROJECT_DIR: root }, encoding: 'utf8' });
+  assert.strictEqual(p.status, 2, p.stderr);
+  assert.match(p.stderr, /BLOCKED: enforce-model-tier could not evaluate this dispatch \(TypeError\)/);
+});
