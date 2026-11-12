@@ -31,14 +31,14 @@ v2 は追跡ファイルだけで約 2 MB（`validate.mjs` だけで 183 KB）�
 ## 新しく作ったもの
 
 - **エージェント 9体**：`planner` / `reviewer`（Opus medium）、`planner-deep` / `reviewer-deep`（Opus xhigh）、`executor` / `debugger` / `verifier`（Sonnet xhigh）、`explorer` / `chore`（Haiku）。
-- **`enforce-model-tier.js`**：v2 の `block-review-floor`（10 KB）・`block-fable-when-off`（9 KB）・`relay-required-agent`（9 KB）・`cmd-write-guard`（9 KB）を約 70 行に置き換え。呼び出しごとの `model` 指定で階層をすり抜けることと、Fable への振り分けを止めます（15件のテスト付き）。
+- **`enforce-model-tier.js`**：v2 の `block-review-floor`（10 KB）・`block-fable-when-off`（9 KB）・`relay-required-agent`（9 KB）・`cmd-write-guard`（9 KB）を約 70 行に置き換え。呼び出しごとの `model` 指定で階層をすり抜けることと、Fable への振り分けを止めます（15件のテスト付き）。後から足した Fable モードがオンの間だけ、対象エージェントの Fable 呼び出しを通します。
 - **`validate.mjs`**（約 150 行）：モデル別名・エフォート固定・medium/deep の対・読み取り専用の道具リスト・フック配線・「消したはずの v2 機能への参照」・CLAUDE.md の § 引用を検査。9通りの意図的な破壊でちゃんと FAIL することをテストで固定。
 
 ## 外したもの（必要なら v2 から取り戻せます）
 
 | 外したもの | 理由 |
 |---|---|
-| Fable の ON/OFF スイッチ一式（`block-fable-when-off` / `cmd-write-guard` / `.fable-status`） | Fable を使わない構成のため不要。`enforce-model-tier` が Fable への振り分けを拒否 |
+| Fable の ON/OFF スイッチ一式（`block-fable-when-off` / `cmd-write-guard` / `.fable-status`） | 移行時は Fable を使わない構成のため外した。その後、小さな作りで取り戻した: `/fable on|off` が `.claude/fable-mode.json` を書く／消すだけで、オンの間は `enforce-model-tier` が対象エージェントを Fable で呼ぶよう求め、オフの間は Fable への振り分けを拒否する（CLAUDE.md §2「Fable mode」） |
 | `clover/`（外部モデル中継）と `relay` スキル・`relay-required-agent` | 今回の構成は Claude 3 階層のみ。使用も `/relay` 2回のみ。中継中は claude.ai 連携機能が止まる副作用もあった |
 | Codex 側一式（`AGENTS.md` / `.codex/` / `.agents/`） | Claude 用ハーネスの更新が目的。Codex を使い続けるなら v2 のまま残すのが安全 |
 | `deliberation-gate.js` | v2 自身の計測で精度 46%、発火は委任全体の 4% 弱。ルール（CLAUDE.md §1.9）だけ残した |

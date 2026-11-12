@@ -1,6 +1,7 @@
 {
   "model": "opus",
   "effortLevel": "medium",
+  "autoCompactWindow": 400000,
   "cleanupPeriodDays": 365,
   "permissions": {
     "deny": [

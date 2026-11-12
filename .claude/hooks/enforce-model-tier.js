@@ -83,12 +83,12 @@ process.stdin.on('end', () => {
   if (mapped && !input.model) {
     deny(
       `BLOCKED: FABLE MODE is on and lists "${input.subagent_type}"; dispatch it with model: "fable", effort: "${mapped}" ` +
-      '(or model: "opus" at its own effort as the usage-limit fallback; /fable off to stop). CLAUDE.md §2.'
+      '(/fable off to stop). model: "opus" at its own effort is only for re-running after a Fable run ended on a usage-limit error. CLAUDE.md §2.'
     );
   }
   if (mapped && requested === 'fable') {
     if (effort === mapped) process.exit(0);
-    deny(`BLOCKED: FABLE MODE maps "${input.subagent_type}" to effort "${mapped}"; got effort=${JSON.stringify(input.effort ?? null)} (CLAUDE.md §2).`);
+    deny(`BLOCKED: FABLE MODE maps "${input.subagent_type}" to effort "${mapped}"; got effort=${effort ?? '(none or not a string)'} (CLAUDE.md §2).`);
   }
 
   const crossFamily = input.model && declared && declared !== 'inherit' && requested !== declared;

@@ -146,13 +146,14 @@ for (const p of scan) {
   }
 }
 
-// ---- 5. Fable mode: its agents are real roster entries, its file stays untracked, a present file is valid
+// ---- 5. Fable mode: its agents are real roster entries, its file stays untracked, and the mode file the
+// hook reads (CLAUDE_PROJECT_DIR first, as enforce-model-tier.js resolves it) is valid when present
 const { AGENTS: FABLE_AGENTS, FILE: FABLE_FILE, readFableMode } = createRequire(import.meta.url)("../hooks/lib/fable-mode.js");
 for (const a of FABLE_AGENTS) if (!TIERS[a]) fail("hooks/lib/fable-mode.js", `Fable mode lists "${a}", which is not in the tier table`);
 const fableRel = FABLE_FILE.split(path.sep).join("/");
 const gitignore = fs.existsSync(path.join(ROOT, ".gitignore")) ? read(path.join(ROOT, ".gitignore")) : "";
 if (!gitignore.split("\n").some((l) => l.trim() === fableRel)) fail(".gitignore", `must ignore ${fableRel}`);
-const fableMode = readFableMode(ROOT);
+const fableMode = readFableMode(process.env.CLAUDE_PROJECT_DIR || ROOT);
 if (fableMode.error) fail(fableRel, `${fableMode.error} (mode is treated as OFF; run /fable on or /fable off)`);
 
 // ---- report

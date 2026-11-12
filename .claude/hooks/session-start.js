@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // SessionStart hook: inject the resume context into Claude's context.
-//   the latest session report (from the newest tasks/YYYY-MM/DD.md that has one) + todo.md + lessons.md
+//   the Fable mode state (CLAUDE.md §2) + the latest session report (from the newest
+//   tasks/YYYY-MM/DD.md that has one) + todo.md + lessons.md
 // Input: Claude Code hook event JSON on stdin. Fail-open.
 //
 // Budget: combined TOTAL_CAP. On overflow the lowest-priority block is trimmed first
@@ -58,20 +59,21 @@ process.stdin.on('end', () => {
 // agent the mode covers, whether to keep or switch the mode (CLAUDE.md §2, Fable mode).
 function fableLine(root) {
   const mode = readFableMode(root);
-  const ask = (choice, cmd) =>
+  const script = path.join(root, '.claude', 'scripts', 'fable-mode.mjs').split(path.sep).join('/');
+  const ask = (choice, arg) =>
     `Before the first dispatch of ${AGENTS.join(' / ')} in this session, ask the owner once in plain Japanese via AskUserQuestion: ` +
-    `${choice}; if they choose to switch, run \`${cmd}\`. Sessions that never dispatch these agents need not ask.`;
+    `${choice}; if they choose to switch, run \`node "${script}" ${arg}\`. Sessions that never dispatch these agents need not ask.`;
   if (mode.on) {
     const map = Object.entries(mode.map).map(([a, e]) => `${a}=${e}`).join(', ');
     return (
       `FABLE MODE: ON — ${map}; pass model "fable" + that effort when dispatching these agents (/fable off to stop).\n` +
-      ask('continue with Fable mode, or turn it off', 'node .claude/scripts/fable-mode.mjs off')
+      ask('continue with Fable mode, or turn it off', 'off')
     );
   }
   return (
     (mode.error ? `WARNING: ${mode.error}; the file is ignored (mode treated as OFF) until fixed or removed (/fable off).\n` : '') +
     `FABLE MODE: OFF — ${AGENTS.join(', ')} run on their normal Opus settings (/fable on to switch).\n` +
-    ask('stay on the normal Opus roster, or turn Fable mode on', 'node .claude/scripts/fable-mode.mjs on')
+    ask('stay on the normal Opus roster, or turn Fable mode on', 'on')
   );
 }
 

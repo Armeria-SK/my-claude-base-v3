@@ -171,3 +171,20 @@ for (const [name, json] of malformed) {
     assert.match(v.stderr, /Fable mode is OFF: .*fable-mode\.json/);
   });
 }
+
+test('a deeply nested mode file never crashes the hook: today\'s rules still deny', () => {
+  const deep = '['.repeat(10000) + ']'.repeat(10000);
+  for (const json of [`{"executor":{"model":${deep},"effort":"low"}}`, `{"executor":{"model":"fable","effort":${deep}}}`]) {
+    const r = modeRoot(json);
+    const v = verdictIn(r, { subagent_type: 'executor', model: 'sonnet', prompt: 'x' });
+    assert.strictEqual(v.exit, 2, v.stderr);
+    assert.match(v.stderr, /BLOCKED[\s\S]*Fable mode is OFF/);
+    assert.strictEqual(verdictIn(r, { subagent_type: 'executor', effort: 'max', prompt: 'x' }).exit, 2);
+  }
+});
+
+test('mode on: the no-model deny offers opus only as the post-usage-limit re-run', () => {
+  const v = verdictIn(onRoot, { subagent_type: 'executor', prompt: 'x' });
+  assert.match(v.stderr, /model: "opus" at its own effort is only for re-running after a Fable run ended on a usage-limit error/);
+  assert.doesNotMatch(v.stderr, /\(or model: "opus"/);
+});

@@ -10,7 +10,8 @@
 ```
 
 ## Process
-1. 引数（`$ARGUMENTS`）に応じて `node .claude/scripts/fable-mode.mjs <on|off|status>` を 1 回実行する（引数なしは `status`）。
+1. 引数（`$ARGUMENTS`）に応じて `node "<ワークスペースのルート>/.claude/scripts/fable-mode.mjs" <on|off|status>` を 1 回実行する（引数なしは `status`）。
+   - **必ず絶対パスで呼ぶ**。ルートは SessionStart の `=== FABLE MODE ===` に出ている `node "…/fable-mode.mjs"` のパスをそのまま使う。相対パスで呼ぶと、worktree の中にいるときに worktree 側のファイルを書いてしまい、フックが読むワークスペース側のモードは変わらない。
 2. 出力をそのまま平易な日本語で伝える: 今オンかオフか、オンなら各エージェントの effort。
    - `on` は `.claude/fable-mode.json`（git 管理外）に既定の割り当てを書く: planner=low, executor=low, reviewer=low, planner-deep=medium, reviewer-deep=medium。debugger / verifier / explorer / chore は対象外。
    - `off` はそのファイルを消すだけ。エージェント定義（`.claude/agents/*.md`）は触らない。
@@ -19,11 +20,11 @@
 
 ## オンの間の呼び出し方
 - 対象エージェントは `model: "fable"` と割り当ての `effort` を付けて呼ぶ。`model` を付けずに呼ぶと `enforce-model-tier.js` が止める。
-- 利用上限（クレジット不足・レート制限）で止まったら、`model: "opus"` をそのエージェント本来の effort（または effort なし）で付けて出し直す。
+- Fable で動かした回が利用上限（クレジット不足・レート制限）で止まったときに限り、`model: "opus"` をそのエージェント本来の effort（または effort なし）で付けて出し直す。
 
 ## 新しいセッションでの確認
 モードがオンでもオフでも、新しいセッションで対象エージェント（planner / executor / reviewer / planner-deep / reviewer-deep）を初めて呼ぶ前に、AskUserQuestion で 1 回だけ平易な日本語で聞く。
-- オンのとき: 「Fable モードのまま続けるか、切るか」→ 切るなら `node .claude/scripts/fable-mode.mjs off`
-- オフのとき: 「通常の Opus のままにするか、Fable モードを入れるか」→ 入れるなら `node .claude/scripts/fable-mode.mjs on`
+- オンのとき: 「Fable モードのまま続けるか、切るか」→ 切るなら SessionStart が示した `node "<ルート>/.claude/scripts/fable-mode.mjs" off`
+- オフのとき: 「通常の Opus のままにするか、Fable モードを入れるか」→ 入れるなら同じく `... on`
 
 対象エージェントを呼ばないセッションでは聞かなくてよい。SessionStart フックがこの指示を毎回コンテキストに入れる。

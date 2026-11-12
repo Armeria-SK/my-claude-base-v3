@@ -22,12 +22,16 @@ function readFableMode(root) {
   } catch (e) {
     return e.code === 'ENOENT' ? { on: false } : { on: false, error: `cannot read ${FILE}: ${e.code || e.message}` };
   }
-  let data;
   try {
-    data = JSON.parse(text);
+    return validate(JSON.parse(text));
   } catch (e) {
-    return { on: false, error: `${FILE} is not valid JSON (${e.message})` };
+    return { on: false, error: `${FILE} is not a valid mode file (${e.message})` };
   }
+}
+
+const show = (v) => (typeof v === 'string' ? JSON.stringify(v) : typeof v);
+
+function validate(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data) || !Object.keys(data).length) {
     return { on: false, error: `${FILE} must be a non-empty object of agent -> { "model": "fable", "effort": ... }` };
   }
@@ -36,8 +40,8 @@ function readFableMode(root) {
     if (!AGENTS.includes(agent)) return { on: false, error: `${FILE}: unknown agent "${agent}" (allowed: ${AGENTS.join(', ')})` };
     const keys = v && typeof v === 'object' && !Array.isArray(v) ? Object.keys(v).sort().join(',') : '';
     if (keys !== 'effort,model') return { on: false, error: `${FILE}: "${agent}" must be exactly { "model": "fable", "effort": ... }` };
-    if (v.model !== 'fable') return { on: false, error: `${FILE}: "${agent}" model must be "fable" (got ${JSON.stringify(v.model)})` };
-    if (!EFFORTS.includes(v.effort)) return { on: false, error: `${FILE}: "${agent}" effort must be one of ${EFFORTS.join('/')} (got ${JSON.stringify(v.effort)})` };
+    if (v.model !== 'fable') return { on: false, error: `${FILE}: "${agent}" model must be "fable" (got ${show(v.model)})` };
+    if (!EFFORTS.includes(v.effort)) return { on: false, error: `${FILE}: "${agent}" effort must be one of ${EFFORTS.join('/')} (got ${show(v.effort)})` };
     map[agent] = v.effort;
   }
   return { on: true, map };
