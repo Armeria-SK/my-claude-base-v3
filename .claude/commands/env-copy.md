@@ -10,12 +10,15 @@
 ```
 
 ## Process
-1. 引数（`$ARGUMENTS`）に応じて `node "<ワークスペースのルート>/.claude/scripts/env-copy.mjs" <on|off|status>` を 1 回実行する（引数なしは `status`）。
-   - **必ず絶対パスで呼ぶ**。相対パスで呼ぶと、worktree の中にいるときに worktree 側のファイルを書いてしまう。
-2. 出力をそのまま平易な日本語で伝える: 今オンかオフか。
-   - `on` は `.claude/env-copy.json`（git 管理外）に `{ "enabled": true }` を書く。`off` はそのファイルを消すだけ。
-   - ファイルが壊れていると、スイッチはオフ扱いになり、出力に理由が出る。`/env-copy on` で書き直すか `/env-copy off` で消す。
-3. スイッチは `/env-copy off` まで残る（セッションをまたいでも自動では切れない）。
+1. 引数（`$ARGUMENTS`）が `on` のとき: **自分では何もしない。スイッチのファイルを書かない・作らない。**
+   - オーナーが入力欄に `/env-copy on` とそのまま打った場合は、`owner-mode-on.js` フック（UserPromptExpansion）がすでに `.claude/env-copy.json`（git 管理外）に `{ "enabled": true }` を書いている。`node "<ルート>/.claude/scripts/env-copy.mjs" status` を 1 回実行して、オンになったことを伝えるだけにする。
+   - status がオフのままなら、フックが動かなかったということ。オーナーに「入力欄に `/env-copy on` とだけ打ってください」と頼む（ほかの文と一緒に書くと効かない）。
+2. 引数が `off` / `status` / なしのとき: `node "<ワークスペースのルート>/.claude/scripts/env-copy.mjs" <off|status>` を 1 回実行する（引数なしは `status`）。
+   - **必ず絶対パスで呼ぶ**。相対パスで呼ぶと、worktree の中にいるときに worktree 側のファイルを触ってしまう。
+3. 出力をそのまま平易な日本語で伝える: 今オンかオフか。`off` はファイルを消すだけ。
+   - ファイルが壊れていると、スイッチはオフ扱いになり、出力に理由が出る。オーナーが `/env-copy on` と打って書き直すか、`off` で消す。
+4. スイッチは `/env-copy off` まで残る（セッションをまたいでも自動では切れない）。
+5. エージェントはこのファイルにも `.claude/fable-mode.json` にも直接触れない（`block-mode-file-write.js` が、名前を含むコマンドと Write / Edit を止める）。ただし文字列で照合しているだけなので、実行時に名前を組み立てるような書き方までは止められない。
 
 ## オンの間のコピーのしかた
 - コピーは必ず `node "<ルート>/.claude/scripts/env-copy.mjs" copy <product> <worktree の絶対パス>` で行う（SessionStart の `=== ENV COPY ===` に絶対パス付きで出る）。`cp` / `Copy-Item` は使わない。

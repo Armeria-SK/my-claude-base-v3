@@ -43,13 +43,17 @@ git(other, 'worktree', 'add', '-q', '-b', 'w2', wtDir('otherwt'));
 const outside = path.join(root, 'outside-wt');
 git(prod, 'worktree', 'add', '-q', '-b', 'w3', outside);
 const wt = wtDir('wt');
+const turnOn = () => fs.writeFileSync(modeFile, '{"enabled":true}\n');
 const clean = () => ['.env', '.env.local'].forEach((n) => fs.rmSync(path.join(wt, n), { force: true }));
 
-test('status with no file is OFF; on/off toggle the mode file', () => {
+test('status with no file is OFF; on is refused (owner only); off removes the file', () => {
   assert.match(run().stdout, /^ENV COPY: OFF$/m);
-  assert.match(run('on').stdout, /^ENV COPY: ON/m);
-  assert.deepStrictEqual(JSON.parse(fs.readFileSync(modeFile, 'utf8')), { enabled: true });
-  assert.match(run('status').stdout, /ENV COPY: ON/);
+  const r = run('on');
+  assert.strictEqual(r.status, 1);
+  assert.match(r.stderr, /only the owner turns env copy on, by typing \/env-copy on/);
+  assert.ok(!fs.existsSync(modeFile));
+  turnOn();
+  assert.match(run('status').stdout, /^ENV COPY: ON/m);
   assert.match(run('off').stdout, /^ENV COPY: OFF$/m);
   assert.ok(!fs.existsSync(modeFile));
   assert.strictEqual(run('off').status, 0);
@@ -86,7 +90,7 @@ for (const [name, text] of [
 }
 
 test('with the switch on: copies .env and .env.* (not .env.example), printing names and sizes only', () => {
-  run('on');
+  turnOn();
   try {
     clean();
     const exampleBefore = fs.readFileSync(path.join(wt, '.env.example'), 'utf8');
@@ -107,7 +111,7 @@ test('with the switch on: copies .env and .env.* (not .env.example), printing na
 });
 
 test('an existing different .env is kept unless --overwrite', () => {
-  run('on');
+  turnOn();
   try {
     clean();
     fs.writeFileSync(path.join(wt, '.env'), 'ANTHROPIC_API_KEY=sk-ant-test-1111111111111111\n');
@@ -127,7 +131,7 @@ test('an existing different .env is kept unless --overwrite', () => {
 });
 
 test('refused targets: product folder, worktree of another repo, worktree outside tmp/worktrees, .. tricks, links', () => {
-  run('on');
+  turnOn();
   const links = [];
   try {
     const cases = [
@@ -169,7 +173,7 @@ test('refused targets: product folder, worktree of another repo, worktree outsid
 });
 
 test('a file the worktree does not gitignore is refused', () => {
-  run('on');
+  turnOn();
   const gi = path.join(wt, '.gitignore');
   const orig = fs.readFileSync(gi, 'utf8');
   try {

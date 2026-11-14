@@ -115,8 +115,9 @@ test('Fable mode OFF: the state and the once-per-session question are injected',
   const block = fableBlock(inject({}));
   assert.match(block, /^FABLE MODE: OFF — planner, executor, reviewer, planner-deep, reviewer-deep/);
   assert.match(block, /ask the owner once in plain Japanese via AskUserQuestion: stay on the normal Opus roster, or turn Fable mode on/);
-  assert.ok(block.includes(`run \`${toggleCmd('on')}\``), block);
-  assert.ok(path.isAbsolute(roots[roots.length - 1]));
+  assert.ok(!block.includes(toggleCmd('on')), 'the conductor must never be told to run on itself');
+  assert.match(block, /ask them to type `\/fable on` in the prompt box themselves \(agents cannot turn it on/);
+  assert.match(block, /the owner types \/fable on to switch/);
   assert.match(block, /never dispatch these agents need not ask/);
   assert.doesNotMatch(block, /WARNING/);
 });
@@ -147,7 +148,7 @@ const envBlock = (ctx) => ctx.split('=== ENV COPY ===\n')[1].split('\n\n=== ')[0
 
 test('env copy OFF: one line, no copy command', () => {
   const block = envBlock(inject({}));
-  assert.strictEqual(block, 'ENV COPY: OFF — never copy .env into worktrees (/env-copy on to allow).');
+  assert.strictEqual(block, 'ENV COPY: OFF — never copy .env into worktrees (only the owner can allow it, by typing /env-copy on).');
 });
 
 test('env copy ON: one line with the absolute copy command', () => {

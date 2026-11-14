@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Env copy (CLAUDE.md §0): node .claude/scripts/env-copy.mjs [on|off|status]
+// Env copy (CLAUDE.md §0): node .claude/scripts/env-copy.mjs [off|status]   (on: only the owner, by typing /env-copy on)
 //                          node .claude/scripts/env-copy.mjs copy <product> <worktree> [--overwrite]
 // copy puts dev/<product>/.env and .env.* (not .env.example, which git already carries) into a git
 // worktree of that same repo under tmp/worktrees/. Refused unless the switch is on. Prints only file
@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const require = createRequire(import.meta.url);
-const { FILE, ON_JSON, modeFile, readEnvCopyMode } = require("../hooks/lib/env-copy-mode.js");
+const { FILE, modeFile, readEnvCopyMode } = require("../hooks/lib/env-copy-mode.js");
 
 const root = process.env.CLAUDE_PROJECT_DIR || path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const [cmd = "status", ...args] = process.argv.slice(2);
@@ -19,11 +19,14 @@ const [cmd = "status", ...args] = process.argv.slice(2);
 const stateLine = () => {
   const mode = readEnvCopyMode(root);
   if (mode.on) return `ENV COPY: ON (${FILE})`;
-  return mode.error ? `ENV COPY: OFF — ${mode.error}; run "off" to remove it or "on" to rewrite it` : "ENV COPY: OFF";
+  return mode.error ? `ENV COPY: OFF — ${mode.error}; run "off" to remove it, or the owner types /env-copy on to rewrite it` : "ENV COPY: OFF";
 };
 
-if (cmd === "on" || cmd === "off" || cmd === "status") {
-  if (cmd === "on") fs.writeFileSync(modeFile(root), ON_JSON);
+if (cmd === "on") {
+  console.error("REFUSED: only the owner turns env copy on, by typing /env-copy on in the prompt box; this script cannot.");
+  process.exit(1);
+}
+if (cmd === "off" || cmd === "status") {
   if (cmd === "off") fs.rmSync(modeFile(root), { force: true });
   console.log(stateLine());
   process.exit(0);
@@ -37,7 +40,7 @@ const overwrite = flags.includes("--overwrite");
 const [product, wtArg] = pos;
 
 function usage() {
-  console.error("usage: env-copy.mjs [on|off|status] | copy <product> <worktree> [--overwrite]");
+  console.error("usage: env-copy.mjs [off|status] | copy <product> <worktree> [--overwrite]");
   process.exit(2);
 }
 function refuse(msg) {

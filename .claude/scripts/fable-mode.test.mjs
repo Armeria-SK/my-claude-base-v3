@@ -20,25 +20,28 @@ test('status with no file is OFF', () => {
   assert.match(r.stdout, /^FABLE MODE: OFF$/m);
 });
 
-test('on writes the default mapping, off removes it', () => {
-  assert.match(run('on').stdout, /ON .*planner=low, executor=low, reviewer=low, planner-deep=medium, reviewer-deep=medium/);
-  assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')), {
-    planner: { model: 'fable', effort: 'low' },
-    executor: { model: 'fable', effort: 'low' },
-    reviewer: { model: 'fable', effort: 'low' },
-    'planner-deep': { model: 'fable', effort: 'medium' },
-    'reviewer-deep': { model: 'fable', effort: 'medium' },
-  });
-  assert.match(run('status').stdout, /FABLE MODE: ON/);
+const ON = JSON.stringify({ executor: { model: 'fable', effort: 'low' } });
+
+test('on is refused: only the owner turns it on (by typing /fable on), and nothing is written', () => {
+  const r = run('on');
+  assert.strictEqual(r.status, 1);
+  assert.match(r.stderr, /only the owner turns Fable mode on, by typing \/fable on/);
+  assert.ok(!fs.existsSync(file));
+});
+
+test('status reports a file the owner hook wrote; off (allowed to agents) removes it', () => {
+  fs.writeFileSync(file, ON);
+  assert.match(run('status').stdout, /FABLE MODE: ON .*executor=low/);
   assert.match(run('off').stdout, /^FABLE MODE: OFF$/m);
   assert.ok(!fs.existsSync(file));
   assert.strictEqual(run('off').status, 0);
 });
 
-test('a malformed file is reported as OFF with the reason; on rewrites it', () => {
+test('a malformed file is reported as OFF with the reason; on does not rewrite it', () => {
   fs.writeFileSync(file, '{"executor":{"model":"opus","effort":"low"}}');
   assert.match(run('status').stdout, /OFF — .*model must be "fable"/);
-  assert.match(run('on').stdout, /FABLE MODE: ON/);
+  assert.strictEqual(run('on').status, 1);
+  assert.strictEqual(fs.readFileSync(file, 'utf8'), '{"executor":{"model":"opus","effort":"low"}}');
   run('off');
 });
 

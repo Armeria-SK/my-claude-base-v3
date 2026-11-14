@@ -16,7 +16,11 @@
       "Read(./**/*.key)",
       "Read(./**/secrets/**)",
       "Read(~/.ssh/**)",
-      "Read(~/.aws/**)"
+      "Read(~/.aws/**)",
+      "Write(./.claude/env-copy.json)",
+      "Edit(./.claude/env-copy.json)",
+      "Write(./.claude/fable-mode.json)",
+      "Edit(./.claude/fable-mode.json)"
     ]
   },
   "hooks": {
@@ -71,6 +75,30 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-worktree-outside-tmp.js\""
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-mode-file-write.js\""
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-mode-file-write.js\""
+          }
+        ]
+      }
+    ],
+    "UserPromptExpansion": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/owner-mode-on.js\""
           }
         ]
       }

@@ -61,9 +61,13 @@ process.stdin.on('end', () => {
 function fableLine(root) {
   const mode = readFableMode(root);
   const script = path.join(root, '.claude', 'scripts', 'fable-mode.mjs').split(path.sep).join('/');
+  const how = {
+    off: `run \`node "${script}" off\``,
+    on: 'ask them to type `/fable on` in the prompt box themselves (agents cannot turn it on; never write the mode file)',
+  };
   const ask = (choice, arg) =>
     `Before the first dispatch of ${AGENTS.join(' / ')} in this session, ask the owner once in plain Japanese via AskUserQuestion: ` +
-    `${choice}; if they choose to switch, run \`node "${script}" ${arg}\`. Sessions that never dispatch these agents need not ask.`;
+    `${choice}; if they choose to switch, ${how[arg]}. Sessions that never dispatch these agents need not ask.`;
   if (mode.on) {
     const map = Object.entries(mode.map).map(([a, e]) => `${a}=${e}`).join(', ');
     return (
@@ -73,7 +77,7 @@ function fableLine(root) {
   }
   return (
     (mode.error ? `WARNING: ${mode.error}; the file is ignored (mode treated as OFF) until fixed or removed (/fable off).\n` : '') +
-    `FABLE MODE: OFF — ${AGENTS.join(', ')} run on their normal Opus settings (/fable on to switch).\n` +
+    `FABLE MODE: OFF — ${AGENTS.join(', ')} run on their normal Opus settings (the owner types /fable on to switch).\n` +
     ask('stay on the normal Opus roster, or turn Fable mode on', 'on')
   );
 }
@@ -84,7 +88,7 @@ function envCopyLine(root) {
   if (mode.on) {
     return `ENV COPY: ON — copy a product's .env into its worktree only via \`node "${script}" copy <product> <worktree>\`; never cp or read it (/env-copy off to stop).`;
   }
-  return `ENV COPY: OFF${mode.error ? ` (${mode.error})` : ''} — never copy .env into worktrees (/env-copy on to allow).`;
+  return `ENV COPY: OFF${mode.error ? ` (${mode.error})` : ''} — never copy .env into worktrees (only the owner can allow it, by typing /env-copy on).`;
 }
 
 // tmp/ is delete-after-use (CLAUDE.md §0). Report what is left so it gets cleaned, but never delete
