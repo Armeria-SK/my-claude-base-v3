@@ -4,6 +4,9 @@
   "autoCompactWindow": 400000,
   "cleanupPeriodDays": 365,
   "permissions": {
+    "allow": [
+      "Bash(node \"D:/my-claude-base-v3/.claude/scripts/env-copy.mjs\" copy *)"
+    ],
     "deny": [
       "Read(./.env)",
       "Read(./.env.*)",

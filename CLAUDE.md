@@ -22,6 +22,7 @@
   - Delete only what you created. Another session may be using the rest; if unknown files are there, report them instead of deleting.
   - The SessionStart hook reports leftovers in `tmp/` so they are not forgotten.
   - **Git worktrees live at `tmp/worktrees/<name>`** — for this repo and every `dev/<product>/` repo alike; never the session scratchpad or anywhere else outside the workspace (the safety hooks cannot clean those up, so they piled up). This overrides the generic "use the scratchpad for temporary files" guidance. Remove with `git -C <repo> worktree remove <path>` once its PR is merged. `block-worktree-outside-tmp.js` enforces it.
+  - **Env copy (owner switch).** A product's `.env` / `.env.*` may go into a worktree of that product only while the owner has `/env-copy on` (`.claude/env-copy.json`, gitignored; present and valid = on, until `/env-copy off`; malformed = off), and only via `node "<root>/.claude/scripts/env-copy.mjs" copy <product> <worktree>` — never `cp` / `Copy-Item`. The script refuses when off, when the target is not a worktree of that same repo under `tmp/worktrees/`, or when a file is not gitignored there; prints names and sizes only; keeps an existing different file unless `--overwrite`. Reading or printing `.env` contents stays forbidden either way. SessionStart shows the state; `git worktree remove` deletes the copies with the worktree.
 
 ---
 
@@ -117,7 +118,7 @@ For big implementation work the owner can move selected agents to Fable without 
 ---
 
 ## 4. Memory
-- Session start: the SessionStart hook injects the Fable mode state (§2), the latest saved session report (from the newest `tasks/YYYY-MM/DD.md` that has one), `todo.md`, and `lessons.md`.
+- Session start: the SessionStart hook injects the Fable mode state (§2), the env copy switch state (§0), the latest saved session report (from the newest `tasks/YYYY-MM/DD.md` that has one), `todo.md`, and `lessons.md`.
 - **On user correction (immediately)**: append to `tasks/lessons.md` — `### [date] Pattern name` + Trigger / Mistake / Fix / Rule. Only repo-specific or hard-won, actionable rules; nothing Googleable.
 - **Recurring review category (2nd occurrence)**: a role-definition gap, not an implementation slip — record the lesson and propose the agent/skill fix to the user.
 - **Write only the increment**: before recording, read what is already recorded and write only what is new. Never re-word an existing entry into a second one — duplication inflates the record and misleads the next session into reading it as fresh progress. Re-confirming something already recorded, with nothing added, adds no entry. This governs *content*; it never shortens a fixed report format (`/save-session`) or edits an existing line (§0 append-only) — an item with nothing new is written as "なし".

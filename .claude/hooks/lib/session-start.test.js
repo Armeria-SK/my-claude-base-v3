@@ -142,3 +142,25 @@ test('a deeply nested Fable mode file is warned about, not a crash', () => {
   assert.match(block, /^WARNING: .*"executor" model must be "fable" \(got object\)/);
   assert.match(block, /FABLE MODE: OFF/);
 });
+
+const envBlock = (ctx) => ctx.split('=== ENV COPY ===\n')[1].split('\n\n=== ')[0];
+
+test('env copy OFF: one line, no copy command', () => {
+  const block = envBlock(inject({}));
+  assert.strictEqual(block, 'ENV COPY: OFF — never copy .env into worktrees (/env-copy on to allow).');
+});
+
+test('env copy ON: one line with the absolute copy command', () => {
+  const block = envBlock(inject({ '.claude/env-copy.json': '{"enabled":true}' }));
+  const script = path.join(roots[roots.length - 1], '.claude', 'scripts', 'env-copy.mjs').split(path.sep).join('/');
+  assert.ok(block.startsWith('ENV COPY: ON'), block);
+  assert.ok(block.includes(`\`node "${script}" copy <product> <worktree>\``), block);
+  assert.ok(!block.includes('\n'), 'must stay one line');
+});
+
+test('env copy file malformed or deeply nested: OFF with the reason, not a crash', () => {
+  for (const text of ['{"enabled":"yes"}', `{"enabled":${'['.repeat(10000)}${']'.repeat(10000)}}`]) {
+    const block = envBlock(inject({ '.claude/env-copy.json': text }));
+    assert.match(block, /^ENV COPY: OFF \(.*must be exactly \{ "enabled": true \} \(got enabled is (string|object)\)\) — never copy/);
+  }
+});

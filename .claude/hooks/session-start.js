@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // SessionStart hook: inject the resume context into Claude's context.
-//   the Fable mode state (CLAUDE.md §2) + the latest session report (from the newest
+//   the Fable mode state (CLAUDE.md §2) + the env copy switch (CLAUDE.md §0) + the latest session report (from the newest
 //   tasks/YYYY-MM/DD.md that has one) + todo.md + lessons.md
 // Input: Claude Code hook event JSON on stdin. Fail-open.
 //
@@ -12,6 +12,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { projectRoot } = require('./lib/journal-util');
 const { AGENTS, readFableMode } = require('./lib/fable-mode');
+const { readEnvCopyMode } = require('./lib/env-copy-mode');
 
 const TOTAL_CAP = 16 * 1024;
 const MIN_FLOOR = 2 * 1024;
@@ -47,7 +48,7 @@ process.stdin.on('end', () => {
   }
   fit(blocks);
 
-  const out = ['=== CONTEXT: workspace root ===', `\n=== FABLE MODE ===\n${fableLine(root)}`];
+  const out = ['=== CONTEXT: workspace root ===', `\n=== FABLE MODE ===\n${fableLine(root)}`, `\n=== ENV COPY ===\n${envCopyLine(root)}`];
   for (const b of blocks) out.push(`\n=== ${b.label} ===\n${b.text == null ? b.empty : b.text}`);
   const leftovers = tmpLeftovers(path.join(root, 'tmp'));
   if (leftovers) out.push(`\n=== TMP LEFTOVERS ===\n${leftovers}`);
@@ -75,6 +76,15 @@ function fableLine(root) {
     `FABLE MODE: OFF — ${AGENTS.join(', ')} run on their normal Opus settings (/fable on to switch).\n` +
     ask('stay on the normal Opus roster, or turn Fable mode on', 'on')
   );
+}
+
+function envCopyLine(root) {
+  const mode = readEnvCopyMode(root);
+  const script = path.join(root, '.claude', 'scripts', 'env-copy.mjs').split(path.sep).join('/');
+  if (mode.on) {
+    return `ENV COPY: ON — copy a product's .env into its worktree only via \`node "${script}" copy <product> <worktree>\`; never cp or read it (/env-copy off to stop).`;
+  }
+  return `ENV COPY: OFF${mode.error ? ` (${mode.error})` : ''} — never copy .env into worktrees (/env-copy on to allow).`;
 }
 
 // tmp/ is delete-after-use (CLAUDE.md §0). Report what is left so it gets cleaned, but never delete
