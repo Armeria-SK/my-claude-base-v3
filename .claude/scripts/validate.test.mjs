@@ -36,6 +36,9 @@ const cases = [
   ['stale v2 reference', '.claude/skills/check/SKILL.md', /^# Check.*$/m, '# Check — see .fable-status'],
   ['skill frontmatter closer glued to a heading', '.claude/skills/commit/SKILL.md', /^user-invocable: true\n---\n\n/m, 'user-invocable: true\n---# Commit\n\n'],
   ['Fable mode file no longer gitignored', '.gitignore', /^\.claude\/fable-mode\.json\n?/m, ''],
+  ['env copy file no longer gitignored', '.gitignore', /^\.claude\/env-copy\.json\n?/m, ''],
+  ['env-copy command loses disable-model-invocation', '.claude/commands/env-copy.md', /^disable-model-invocation: true\n/m, ''],
+  ['fable command loses disable-model-invocation', '.claude/commands/fable.md', /^disable-model-invocation: true\n/m, 'disable-model-invocation: false\n'],
   ['bad § citation', '.claude/skills/check/SKILL.md', /CLAUDE\.md §1\.2/, 'CLAUDE.md §9.9'],
 ];
 for (const [name, file, re, rep] of cases) {
@@ -75,6 +78,22 @@ test('validate catches: a malformed Fable mode file (in a temp root, never the c
     const r = run();
     assert.strictEqual(r.status, 1);
     assert.match(r.stdout, /fable-mode\.json: .*unknown agent "debugger"/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('validate catches: a malformed env copy file (in a temp root, never the checkout\'s own file)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-env-copy-'));
+  try {
+    fs.mkdirSync(path.join(root, '.claude'));
+    const run = () => spawnSync(process.execPath, ['.claude/scripts/validate.mjs'], { encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
+    fs.writeFileSync(path.join(root, '.claude', 'env-copy.json'), '{"enabled":true}');
+    assert.strictEqual(run().status, 0, 'a valid switch file must pass');
+    fs.writeFileSync(path.join(root, '.claude', 'env-copy.json'), '{"enabled":1}');
+    const r = run();
+    assert.strictEqual(r.status, 1);
+    assert.match(r.stdout, /env-copy\.json: .*must be exactly/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
