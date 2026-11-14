@@ -43,6 +43,7 @@ git(other, 'worktree', 'add', '-q', '-b', 'w2', wtDir('otherwt'));
 const outside = path.join(root, 'outside-wt');
 git(prod, 'worktree', 'add', '-q', '-b', 'w3', outside);
 const wt = wtDir('wt');
+const wtGitDir = () => spawnSync('git', ['-C', wt, 'rev-parse', '--path-format=absolute', '--git-dir'], { encoding: 'utf8' }).stdout.trim();
 const turnOn = () => fs.writeFileSync(modeFile, '{"enabled":true}\n');
 const clean = () => ['.env', '.env.local'].forEach((n) => fs.rmSync(path.join(wt, n), { force: true }));
 
@@ -177,7 +178,7 @@ test('a file the worktree does not gitignore is refused', () => {
   const gi = path.join(wt, '.gitignore');
   const orig = fs.readFileSync(gi, 'utf8');
   try {
-    fs.writeFileSync(gi, '.env\n.env.*.tmp\n');
+    fs.writeFileSync(gi, '.env\n');
     const r = run('copy', 'prod', wt);
     assert.strictEqual(r.status, 1);
     assert.match(r.stderr, /\.env\.local is not gitignored/);
@@ -220,7 +221,32 @@ test('--overwrite replaces the destination entry and leaves no temp file behind'
     assert.strictEqual(r.status, 0, r.stderr);
     assert.strictEqual(fs.readFileSync(path.join(wt, '.env'), 'utf8'), FAKE);
     assert.deepStrictEqual(fs.readdirSync(wt).filter((n) => n.endsWith('.tmp')), []);
+    assert.deepStrictEqual(fs.readdirSync(wtGitDir()).filter((n) => n.startsWith('env-copy-')), []);
   } finally {
+    clean();
+    run('off');
+  }
+});
+
+test('a product .gitignore that lists exact names works for fresh and overwritten copies (temp file lives in the git folder)', () => {
+  turnOn();
+  const gi = path.join(wt, '.gitignore');
+  const orig = fs.readFileSync(gi, 'utf8');
+  try {
+    clean();
+    fs.writeFileSync(gi, '.env\n.env.local\n');
+    const r = run('copy', 'prod', wt);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /^copied: \.env /m);
+    fs.writeFileSync(path.join(wt, '.env.local'), 'OLD\n');
+    const o = run('copy', 'prod', wt, '--overwrite');
+    assert.strictEqual(o.status, 0, o.stderr);
+    assert.match(o.stdout, /^overwritten: \.env\.local /m);
+    const status = spawnSync('git', ['-C', wt, 'status', '--porcelain'], { encoding: 'utf8' }).stdout;
+    assert.strictEqual(status.split('\n').filter((l) => l && !l.endsWith('.gitignore')).join('\n'), '');
+    assert.deepStrictEqual(fs.readdirSync(wtGitDir()).filter((n) => n.startsWith('env-copy-')), []);
+  } finally {
+    fs.writeFileSync(gi, orig);
     clean();
     run('off');
   }

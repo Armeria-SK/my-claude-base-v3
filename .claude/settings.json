@@ -92,7 +92,7 @@
         ]
       },
       {
-        "matcher": "CronCreate|ScheduleWakeup|RemoteTrigger|SendMessage|mcp__scheduled-tasks__.*|mcp__ccd_session__.*|mcp__ccd_session_mgmt__.*",
+        "matcher": "CronCreate|ScheduleWakeup|RemoteTrigger|SendMessage|Agent|Task|Workflow|mcp__scheduled-tasks__.*|mcp__ccd_session__.*|mcp__ccd_session_mgmt__.*",
         "hooks": [
           {
             "type": "command",

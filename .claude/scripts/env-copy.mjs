@@ -103,12 +103,15 @@ const names = fs
   .sort();
 if (!names.length) refuse(`dev/${product} has no .env file to copy`);
 
+const gitDirOut = git(wtReal, "rev-parse", "--path-format=absolute", "--git-dir");
+const tmpDir = gitDirOut && real(gitDirOut);
+if (!tmpDir) refuse("cannot find the worktree's own git folder");
+
 const plan = [];
 for (const name of names) {
   const from = path.join(srcReal, name);
   const to = path.join(wtReal, name);
-  const tmpName = `${name}.${process.pid}.tmp`;
-  for (const n of [name, tmpName]) if (!ignored(n)) refuse(`${n} is not gitignored in the worktree; add it to .gitignore first`);
+  if (!ignored(name)) refuse(`${name} is not gitignored in the worktree; add it to .gitignore first`);
   let st = null;
   try {
     st = fs.lstatSync(to);
@@ -119,25 +122,31 @@ for (const name of names) {
   if (st && st.nlink !== 1) refuse(`${name} in the worktree is a hard link (${st.nlink} names); remove it first`);
   const same = st && fs.readFileSync(from).equals(fs.readFileSync(to));
   if (st && !same && !overwrite) refuse(`${name} already exists in the worktree with different content; pass --overwrite to replace it`);
-  plan.push({ name, from, to, tmp: path.join(wtReal, tmpName), action: !st ? "copied" : same ? "unchanged" : "overwritten" });
+  plan.push({ name, from, to, tmp: path.join(tmpDir, `env-copy-${process.pid}${name}.tmp`), action: !st ? "copied" : same ? "unchanged" : "overwritten" });
 }
+const unchangedSince = (p) => {
+  if (real(wtArg) !== wtReal || !inside(real(wtReal))) return false;
+  let st = null;
+  try {
+    st = fs.lstatSync(p.to);
+  } catch (e) {
+    return p.action === "copied" && e.code === "ENOENT";
+  }
+  return p.action === "overwritten" && st.isFile() && st.nlink === 1;
+};
 for (const p of plan) {
-  if (p.action === "copied") {
-    fs.copyFileSync(p.from, p.to, fs.constants.COPYFILE_EXCL);
-  } else if (p.action === "overwritten") {
+  if (p.action !== "unchanged") {
     fs.copyFileSync(p.from, p.tmp, fs.constants.COPYFILE_EXCL);
-    let ok = false;
-    try {
-      const again = fs.lstatSync(p.to);
-      ok = real(wtArg) === wtReal && inside(real(wtReal)) && again.isFile() && again.nlink === 1;
-    } catch {
-      ok = false;
+    let problem = unchangedSince(p) ? null : `${p.name} or the worktree changed while copying; nothing written`;
+    if (!problem) {
+      try {
+        fs.renameSync(p.tmp, p.to);
+      } catch (e) {
+        problem = `could not move ${p.name} into the worktree (${e.code || "error"})`;
+      }
     }
-    if (!ok) {
-      fs.rmSync(p.tmp, { force: true });
-      refuse(`${p.name} or the worktree changed while copying; nothing replaced`);
-    }
-    fs.renameSync(p.tmp, p.to);
+    fs.rmSync(p.tmp, { force: true });
+    if (problem) refuse(problem);
   }
   console.log(`${p.action}: ${p.name} (${fs.statSync(p.to).size} bytes)`);
 }

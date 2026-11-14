@@ -157,7 +157,7 @@ test('a queued or sent prompt that would turn a switch on is denied', () => {
   ]) {
     const r = guard(tool, input);
     assert.strictEqual(r.status, 2, `${tool}: ${JSON.stringify(input)}`);
-    assert.match(r.stderr, /may not queue or send a prompt that turns a switch on/);
+    assert.match(r.stderr, /agents may not queue or send one/);
   }
 });
 
@@ -168,7 +168,8 @@ test('ordinary prompts, off, and other tools pass', () => {
     ['SendMessage', { to: 'main', message: 'status: /fable is on? /env-copy status' }],
     ['ScheduleWakeup', { prompt: '/fable one more pass' }],
     ['mcp__scheduled-tasks__list_scheduled_tasks', {}],
-    ['Agent', { prompt: '/env-copy on' }],
+    ['Agent', { prompt: 'Review the change that adds /env-copy on handling', subagent_type: 'reviewer' }],
+    ['Workflow', { script: 'x', args: { note: 'the owner types /fable on' } }],
   ]) {
     assert.strictEqual(guard(tool, input).status, 0, `${tool}: ${JSON.stringify(input)}`);
   }
@@ -181,6 +182,76 @@ test('a prompt-tool input too deep or too large to walk is denied (fail closed),
     const r = runRaw(GUARD, input);
     assert.strictEqual(r.status, 2, r.stderr);
     assert.match(r.stderr, /too large or deep to inspect/);
+  }
+});
+
+test('a nested Claude Code run given the switch-on command is denied', () => {
+  for (const [tool, cmd] of [
+    ['Bash', 'claude -p "/env-copy on"'],
+    ['Bash', 'cd x && claude "/fable on"'],
+    ['PowerShell', 'C:/Users/u/.local/bin/claude.exe -p "/FABLE   ON"'],
+    ['Bash', 'claude.cmd --print "/env-copy on"'],
+    ['Bash', 'npx @anthropic-ai/claude-code -p "/env-copy on"'],
+    ['Bash', 'node C:/npm/node_modules/@anthropic-ai/claude-code/cli.js "/fable on"'],
+    ['Bash', 'echo "/env-copy on" | claude -p'],
+    ['Bash', 'bash -c "claude -p \'/fable on\'"'],
+  ]) {
+    const r = guard(tool, { command: cmd });
+    assert.strictEqual(r.status, 2, `${tool}: ${cmd}`);
+    assert.match(r.stderr, /nested Claude Code run/);
+  }
+});
+
+test('shell text that only mentions the command (no nested claude run) passes', () => {
+  for (const cmd of [
+    'git -C D:/x commit -m "feat: /env-copy on handling"',
+    'git log --oneline | grep "/fable on"',
+    'claude --version',
+    'claude -p "summarise the repo"',
+    'echo "claude is fine"; echo "/env-copy off"',
+  ]) {
+    assert.strictEqual(guard('Bash', { command: cmd }).status, 0, cmd);
+  }
+});
+
+test('the durable cron store: planting the command is denied, ordinary edits pass, the shell may not name it', () => {
+  const store = 'D:/ws/.claude/scheduled_tasks.json';
+  const planted = JSON.stringify({ tasks: [{ cron: '* * * * *', prompt: '/env-copy on', durable: true }] });
+  assert.strictEqual(guard('Write', { file_path: store, content: planted }).status, 2);
+  assert.strictEqual(guard('Edit', { file_path: store, old_string: 'x', new_string: '"prompt": "/fable  on"' }).status, 2);
+  assert.strictEqual(guard('MultiEdit', { file_path: store, edits: [{ old_string: 'a', new_string: '/Fable on' }] }).status, 2);
+  assert.strictEqual(guard('Write', { file_path: 'D:\\ws\\.claude\\scheduled_tasks.json.', content: planted }).status, 2);
+  assert.strictEqual(guard('Write', { file_path: store, content: JSON.stringify({ tasks: [{ prompt: 'run tests' }] }) }).status, 0);
+  for (const cmd of ['cat .claude/scheduled_tasks.json', "echo '{}' > .claude/Scheduled_Tasks.json"]) {
+    const r = guard('Bash', { command: cmd });
+    assert.strictEqual(r.status, 2, cmd);
+    assert.match(r.stderr, /holds queued prompts/);
+  }
+});
+
+test('Windows name aliases of the switch files are denied (trailing dots / spaces, ::$DATA)', () => {
+  for (const p of [
+    'D:/ws/.claude/env-copy.json.',
+    'D:/ws/.claude/env-copy.json. . ',
+    'D:\\ws\\.claude\\fable-mode.json::$DATA',
+    '.claude/FABLE-MODE.JSON:stream',
+  ]) {
+    const r = guard('Write', { file_path: p, content: '{"enabled":true}' });
+    assert.strictEqual(r.status, 2, p);
+    assert.match(r.stderr, /owner switch file/);
+  }
+  assert.strictEqual(guard('Write', { file_path: 'D:/ws/.claude/env-copy.json.bak', content: 'x' }).status, 0);
+});
+
+test('Agent / Task / Workflow whose whole prompt is the switch-on command are denied', () => {
+  for (const [tool, input] of [
+    ['Agent', { prompt: '/env-copy on', subagent_type: 'chore' }],
+    ['Task', { prompt: '  /fable on \n' }],
+    ['Workflow', { script: 'x', args: { steps: [{ prompt: '/FABLE ON' }] } }],
+  ]) {
+    const r = guard(tool, input);
+    assert.strictEqual(r.status, 2, tool);
+    assert.match(r.stderr, /agents may not queue or send one/);
   }
 });
 
