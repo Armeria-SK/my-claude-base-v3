@@ -37,6 +37,8 @@ const cases = [
   ['skill frontmatter closer glued to a heading', '.claude/skills/commit/SKILL.md', /^user-invocable: true\n---\n\n/m, 'user-invocable: true\n---# Commit\n\n'],
   ['Fable mode file no longer gitignored', '.gitignore', /^\.claude\/fable-mode\.json\n?/m, ''],
   ['env copy file no longer gitignored', '.gitignore', /^\.claude\/env-copy\.json\n?/m, ''],
+  ['env-copy command loses disable-model-invocation', '.claude/commands/env-copy.md', /^disable-model-invocation: true\n/m, ''],
+  ['fable command loses disable-model-invocation', '.claude/commands/fable.md', /^disable-model-invocation: true\n/m, 'disable-model-invocation: false\n'],
   ['bad § citation', '.claude/skills/check/SKILL.md', /CLAUDE\.md §1\.2/, 'CLAUDE.md §9.9'],
 ];
 for (const [name, file, re, rep] of cases) {

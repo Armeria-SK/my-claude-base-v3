@@ -5,27 +5,30 @@
 //   - Write / Edit / MultiEdit / NotebookEdit: denied when the target's file name is one of the two switch files.
 //   - Bash / PowerShell: denied when the command text names either file at all (read, write, delete alike;
 //     the scripts' status / off subcommands are the way to see or clear a switch).
-//   - CronCreate / ScheduleWakeup / RemoteTrigger / SendMessage / mcp__scheduled-tasks__* / mcp__ccd_session__* /
-//     mcp__ccd_session_mgmt__*: denied when any string in the input holds "/env-copy on" or "/fable on"
+//     Also denied: any shell command naming owner-mode-on (running the ON hook by hand writes the file).
+//   - CronCreate / ScheduleWakeup / RemoteTrigger / mcp__scheduled-tasks__* / mcp__ccd_session__* /
+//     mcp__ccd_session_mgmt__*: denied when any string in the input holds the switch-on command
 //     (any case, any spacing), or when the input is too deep / large to walk (fail closed).
-//   - Agent / Task / Workflow: denied when any input string is, as a whole, "/env-copy on" or "/fable on".
+//   - Agent / Task / Workflow / SendMessage: denied when any input string is, as a whole, the switch-on command
+//     (a message or dispatch that merely quotes it passes).
 //   - .claude/scheduled_tasks.json (the durable cron store, read back as typed prompts): a Write / Edit that puts
 //     the command in it is denied, and any shell command naming the file is denied.
-//   - A nested Claude Code run from the shell (claude / claude.exe, npx @anthropic-ai/claude-code, node <cli>):
-//     denied when the command text holds the switch-on command (the pattern is applied only when such a run is in it).
+//   - A nested Claude Code run from the shell: denied when the command text holds both the word "claude" and the
+//     switch-on command, in any shape (second line, subshell, &, cmd /c, Start-Process, ...). Cost: a command
+//     that merely quotes both (a commit message, a grep) is denied too; commit such text with git commit -F.
 //   - File names are compared as Windows opens them: cut at the first ":" ("::$DATA"), trailing dots / spaces dropped.
-// Residual (string matching only): a command that builds the name at run time (string concatenation,
-// variables, base64, a script file that writes it) is not caught. That gap is documented, not chased.
+// Bar (owner ruling): this stops an honest or careless agent, not a deliberate one; agents have the same file
+// rights as these hooks. Residual: text built or encoded at run time (concatenation, variables, base64, a script
+// file) is not caught, and this hook, settings.json and the scripts are themselves agent-editable.
 // Input: hook event JSON on stdin. Output: deny -> message on stderr + exit 2; otherwise exit 0.
-
-const { segments } = require('./lib/parse-cmd');
 
 const NAMES = ['env-copy.json', 'fable-mode.json'];
 const CRON_STORE = 'scheduled_tasks.json';
 const FILE_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
 const SHELL_TOOLS = ['Bash', 'PowerShell'];
-const PROMPT_TOOLS = /^(CronCreate|ScheduleWakeup|RemoteTrigger|SendMessage|mcp__scheduled-tasks__.+|mcp__ccd_session__.+|mcp__ccd_session_mgmt__.+)$/;
-const DISPATCH_TOOLS = ['Agent', 'Task', 'Workflow'];
+const PROMPT_TOOLS = /^(CronCreate|ScheduleWakeup|RemoteTrigger|mcp__scheduled-tasks__.+|mcp__ccd_session__.+|mcp__ccd_session_mgmt__.+)$/;
+const DISPATCH_TOOLS = ['Agent', 'Task', 'Workflow', 'SendMessage'];
+const ON_HOOK = 'owner-mode-on';
 const OWNER_ON = /\/\s*(env-copy|fable)\s+on\b/i;
 const OWNER_ON_WHOLE = /^\s*\/\s*(env-copy|fable)\s+on\s*$/i;
 const WALK_MAX_DEPTH = 32;
@@ -35,12 +38,6 @@ const PLANTED = 'a queued or sent prompt that would turn a switch on ("/env-copy
 // Windows treats "x.json." / "x.json " / "x.json::$DATA" as x.json, so compare the name Windows would open.
 const baseName = (p) =>
   p.replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop().split(':')[0].replace(/[. ]+$/, '').trim().toLowerCase();
-
-// A nested Claude Code run (claude / claude.exe, npx @anthropic-ai/claude-code, node .../claude-code/cli.js).
-const isClaude = ({ cmd, args }) =>
-  cmd === 'claude' ||
-  (['npx', 'bunx', 'pnpx'].includes(cmd) && args.some((a) => /claude-code|^claude$/i.test(a))) ||
-  (cmd === 'node' && typeof args[0] === 'string' && /claude-code|[\\/]claude(\.m?js)?$/i.test(args[0]));
 
 function verdict(payload) {
   if (!payload || typeof payload !== 'object') return null;
@@ -60,13 +57,11 @@ function verdict(payload) {
     const named = NAMES.find((n) => text.includes(n));
     if (named) return `${named} is an owner switch file; agents may not create, write, read or delete it directly`;
     if (text.includes(CRON_STORE)) return `${CRON_STORE} holds queued prompts; agents may not touch it from the shell`;
-    let nested = false;
-    try {
-      nested = segments(input.command).some(isClaude);
-    } catch {
-      nested = /\bclaude\b/i.test(input.command);
-    }
-    return nested && OWNER_ON.test(input.command) ? 'a nested Claude Code run given "/env-copy on" or "/fable on"; agents may not start one' : null;
+    if (text.includes(ON_HOOK)) return `${ON_HOOK}.js is the owner's ON hook; agents may not run, read or edit it from the shell`;
+    return /\bclaude\b/i.test(input.command) && OWNER_ON.test(input.command)
+      ? 'a command that mentions claude together with the switch-on command (a nested Claude Code run would expand it); ' +
+          'agents may not run one. To commit text that quotes both, use git commit -F <file>'
+      : null;
   }
   if (typeof tool === 'string' && PROMPT_TOOLS.test(tool)) return plantedOn(payload.tool_input, OWNER_ON);
   if (DISPATCH_TOOLS.includes(tool)) return plantedOn(payload.tool_input, OWNER_ON_WHOLE);

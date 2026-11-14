@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 // UserPromptExpansion hook: the only path that turns the owner switches ON (CLAUDE.md §0 Env copy,
-// §2 Fable mode). When the owner types exactly "/env-copy on" or "/fable on", this hook writes the mode
-// file itself; agents cannot type a slash command, and the scripts no longer accept "on".
-// Matching is exact (expansion_type, command_name, command_args and the whole prompt), so a longer
-// prompt that merely contains "/env-copy on" does nothing. Never blocks; on any doubt it writes nothing.
+// §2 Fable mode). When a "/env-copy on" or "/fable on" command expands, this hook writes the mode file
+// itself; the scripts no longer accept "on". It checks expansion_type, command_name, command_args ("on"
+// only) and the prompt; Claude Code rebuilds that prompt as "/<name> <args>", so this is a check on the
+// expanded command, not on the raw text the owner typed (a line elsewhere in a stacked owner message that
+// expands to the command also fires). The command files carry disable-model-invocation, which per the
+// Claude Code docs refuses the model's own call and a scheduled-task fire of the command; the PreToolUse
+// guard block-mode-file-write.js is the second layer. Never blocks; on doubt writes nothing.
 
 const fs = require('node:fs');
 const path = require('node:path');

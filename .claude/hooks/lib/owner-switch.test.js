@@ -202,6 +202,44 @@ test('a nested Claude Code run given the switch-on command is denied', () => {
   }
 });
 
+test('nested-run shapes the command parser missed are denied too (any text holding both "claude" and the command)', () => {
+  for (const [tool, cmd] of [
+    ['Bash', 'echo hi\nclaude -p "/env-copy on"'],
+    ['Bash', '( claude -p "/fable on" )'],
+    ['Bash', '{ claude -p "/fable on"; }'],
+    ['Bash', 'if true; then claude -p "/env-copy on"; fi'],
+    ['Bash', 'claude -p "/env-copy on" &'],
+    ['Bash', 'x=$(claude -p "/fable on")'],
+    ['Bash', 'cmd /c claude -p "/env-copy on"'],
+    ['Bash', 'timeout 60 claude -p "/fable on"'],
+    ['Bash', 'winpty claude "/fable on"'],
+    ['Bash', 'nohup claude -p "/env-copy on"'],
+    ['Bash', 'echo "/env-copy on" | xargs claude -p'],
+    ['PowerShell', 'C:\\Users\\u\\AppData\\Roaming\\npm\\claude.cmd -p "/fable on"'],
+    ['PowerShell', '& claude -p "/env-copy on"'],
+    ['PowerShell', 'Start-Process claude -ArgumentList "-p","/fable on"'],
+  ]) {
+    assert.strictEqual(guard(tool, { command: cmd }).status, 2, `${tool}: ${cmd}`);
+  }
+});
+
+test('running the ON hook by hand from the shell is denied', () => {
+  for (const [tool, cmd] of [
+    ['Bash', 'echo {} | node .claude/hooks/owner-mode-on.js'],
+    ['Bash', 'node "D:/my-claude-base-v3/.claude/hooks/owner-mode-on.js" < p.json'],
+    ['PowerShell', 'Get-Content p.json | node D:\\ws\\.claude\\hooks\\Owner-Mode-On.js'],
+  ]) {
+    const r = guard(tool, { command: cmd });
+    assert.strictEqual(r.status, 2, cmd);
+    assert.match(r.stderr, /owner's ON hook/);
+  }
+});
+
+test('SendMessage is denied only when the whole message is the command (fix-backs that quote it pass)', () => {
+  assert.strictEqual(guard('SendMessage', { to: 'executor', message: 'Finding 3: the /env-copy on path is still open' }).status, 0);
+  assert.strictEqual(guard('SendMessage', { to: 'main', message: ' /env-copy  on ' }).status, 2);
+});
+
 test('shell text that only mentions the command (no nested claude run) passes', () => {
   for (const cmd of [
     'git -C D:/x commit -m "feat: /env-copy on handling"',

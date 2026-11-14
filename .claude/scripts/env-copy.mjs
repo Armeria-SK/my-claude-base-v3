@@ -60,7 +60,8 @@ const real = (p) => {
     return null;
   }
 };
-const gitRun = (dir, ...a) => spawnSync("git", ["-c", "core.fsmonitor=false", "-C", dir, ...a], { encoding: "utf8" });
+const gitEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^GIT_/i.test(k)));
+const gitRun = (dir, ...a) => spawnSync("git", ["-c", "core.fsmonitor=false", "-C", dir, ...a], { encoding: "utf8", env: gitEnv });
 const git = (dir, ...a) => {
   const r = gitRun(dir, ...a);
   return r.status === 0 ? r.stdout.trim() : null;
@@ -86,6 +87,7 @@ if (!wtReal || !wtBase) refuse("the worktree does not exist");
 if (norm(wtBase) !== norm(wtBaseLexical)) refuse("tmp/ or tmp/worktrees/ is a link, not a real folder");
 const inside = (p) => !!p && norm(p).startsWith(norm(wtBase) + path.sep);
 if (!inside(wtReal)) refuse("the worktree must be under tmp/worktrees/ of the workspace");
+if (norm(path.dirname(wtReal)) !== norm(wtBase)) refuse("the worktree must be a direct child of tmp/worktrees/");
 const wtTop = git(wtReal, "rev-parse", "--show-toplevel");
 if (!wtTop || norm(wtTop) !== norm(wtReal)) refuse("the worktree path is not the top of a git worktree");
 const common = (d) => {
@@ -106,6 +108,7 @@ if (!names.length) refuse(`dev/${product} has no .env file to copy`);
 const gitDirOut = git(wtReal, "rev-parse", "--path-format=absolute", "--git-dir");
 const tmpDir = gitDirOut && real(gitDirOut);
 if (!tmpDir) refuse("cannot find the worktree's own git folder");
+if (!norm(tmpDir).startsWith(norm(srcCommon) + path.sep)) refuse(`the worktree's git folder is not inside dev/${product}'s repository`);
 
 const plan = [];
 for (const name of names) {

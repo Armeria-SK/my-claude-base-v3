@@ -1,3 +1,8 @@
+---
+description: Fable モードの切り替え（オンにできるのはオーナー本人だけ）
+disable-model-invocation: true
+---
+
 # Fable - Fable モードの切り替え
 
 大きな実装のときに、一部のエージェントを Fable で動かすモードを入れたり切ったりする（CLAUDE.md §2「Fable mode」）。メインセッション自身のモデルは変えない。**入れられるのはオーナー本人だけ**。
@@ -12,7 +17,7 @@
 ## Process
 1. 引数（`$ARGUMENTS`）が `on` のとき: **自分では何もしない。モードのファイルを書かない・作らない。**
    - オーナーが入力欄に `/fable on` とそのまま打った場合は、`owner-mode-on.js` フック（UserPromptExpansion）がすでにファイルを書いている。`node "<ルート>/.claude/scripts/fable-mode.mjs" status` を 1 回実行して、オンになったことを伝えるだけにする。
-   - status がオフのままなら、フックが動かなかったということ。オーナーに「入力欄に `/fable on` とだけ打ってください」と頼む（ほかの文と一緒に書くと効かない）。
+   - status がオフのままなら、そのことをオーナーに伝えて、もう一度自分で `/fable on` と打ってもらう。**フック（`owner-mode-on.js`）を自分で動かすことは絶対にしない**（それはオーナーの代わりにモードを入れることになる）。
 2. 引数が `off` / `status` / なしのとき: `node "<ワークスペースのルート>/.claude/scripts/fable-mode.mjs" <off|status>` を 1 回実行する（引数なしは `status`）。
    - **必ず絶対パスで呼ぶ**。ルートは SessionStart の `=== FABLE MODE ===` に出ている `node "…/fable-mode.mjs"` のパスをそのまま使う。相対パスで呼ぶと、worktree の中にいるときに worktree 側のファイルを書いてしまい、フックが読むワークスペース側のモードは変わらない。
 3. 出力をそのまま平易な日本語で伝える: 今オンかオフか、オンなら各エージェントの effort。

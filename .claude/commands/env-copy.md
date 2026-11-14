@@ -1,3 +1,8 @@
+---
+description: 製品の .env を worktree にコピーしてよいかの切り替え（オンにできるのはオーナー本人だけ）
+disable-model-invocation: true
+---
+
 # Env copy - 製品の .env を worktree にコピーしてよいかの切り替え
 
 製品（`dev/<product>/`）の `.env`（API キーなど）を、その製品の git worktree（`tmp/worktrees/<name>`）にコピーしてよいかを入れたり切ったりする（CLAUDE.md §0「Env copy」）。中身を読む・表示することは、オンでも禁止のまま。
@@ -12,7 +17,7 @@
 ## Process
 1. 引数（`$ARGUMENTS`）が `on` のとき: **自分では何もしない。スイッチのファイルを書かない・作らない。**
    - オーナーが入力欄に `/env-copy on` とそのまま打った場合は、`owner-mode-on.js` フック（UserPromptExpansion）がすでに `.claude/env-copy.json`（git 管理外）に `{ "enabled": true }` を書いている。`node "<ルート>/.claude/scripts/env-copy.mjs" status` を 1 回実行して、オンになったことを伝えるだけにする。
-   - status がオフのままなら、フックが動かなかったということ。オーナーに「入力欄に `/env-copy on` とだけ打ってください」と頼む（ほかの文と一緒に書くと効かない）。
+   - status がオフのままなら、そのことをオーナーに伝えて、もう一度自分で `/env-copy on` と打ってもらう。**フック（`owner-mode-on.js`）を自分で動かすことは絶対にしない**（それはオーナーの代わりにスイッチを入れることになる）。
 2. 引数が `off` / `status` / なしのとき: `node "<ワークスペースのルート>/.claude/scripts/env-copy.mjs" <off|status>` を 1 回実行する（引数なしは `status`）。
    - **必ず絶対パスで呼ぶ**。相対パスで呼ぶと、worktree の中にいるときに worktree 側のファイルを触ってしまう。
 3. 出力をそのまま平易な日本語で伝える: 今オンかオフか。`off` はファイルを消すだけ。

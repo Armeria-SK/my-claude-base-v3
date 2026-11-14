@@ -162,6 +162,13 @@ const envRel = ENV_FILE.split(path.sep).join("/");
 if (!gitignore.split("\n").some((l) => l.trim() === envRel)) fail(".gitignore", `must ignore ${envRel}`);
 const envMode = readEnvCopyMode(process.env.CLAUDE_PROJECT_DIR || ROOT);
 if (envMode.error) fail(envRel, `${envMode.error} (switch is treated as OFF; run /env-copy on or /env-copy off)`);
+for (const c of ["env-copy", "fable"]) {
+  const f = path.join(ROOT, ".claude", "commands", `${c}.md`);
+  const fm = fs.existsSync(f) ? frontmatter(f) : null;
+  if (!fm || String(fm["disable-model-invocation"]) !== "true") {
+    fail(`commands/${c}.md`, "owner-switch command must carry disable-model-invocation: true (only the owner may invoke it)");
+  }
+}
 
 // ---- report
 for (const f of findings) console.log(`FINDING  ${f}`);

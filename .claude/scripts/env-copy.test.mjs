@@ -217,9 +217,11 @@ test('--overwrite replaces the destination entry and leaves no temp file behind'
   try {
     clean();
     fs.writeFileSync(path.join(wt, '.env'), 'OLD\n');
+    const before = fs.statSync(path.join(wt, '.env'), { bigint: true }).ino;
     const r = run('copy', 'prod', wt, '--overwrite');
     assert.strictEqual(r.status, 0, r.stderr);
     assert.strictEqual(fs.readFileSync(path.join(wt, '.env'), 'utf8'), FAKE);
+    assert.notStrictEqual(fs.statSync(path.join(wt, '.env'), { bigint: true }).ino, before, 'the old file was written in place, not replaced');
     assert.deepStrictEqual(fs.readdirSync(wt).filter((n) => n.endsWith('.tmp')), []);
     assert.deepStrictEqual(fs.readdirSync(wtGitDir()).filter((n) => n.startsWith('env-copy-')), []);
   } finally {
@@ -279,6 +281,112 @@ test('a junctioned tmp/worktrees (pointing outside the workspace) is refused', {
     fs.unlinkSync(path.join(root2, 'tmp', 'worktrees'));
   } finally {
     fs.rmSync(root2, { recursive: true, force: true });
+  }
+});
+
+test('GIT_* variables in the environment cannot redirect the repository checks', () => {
+  turnOn();
+  const target = wtDir('otherwt');
+  try {
+    const env = {
+      ...process.env,
+      CLAUDE_PROJECT_DIR: root,
+      GIT_DIR: path.join(prod, '.git'),
+      GIT_COMMON_DIR: path.join(prod, '.git'),
+      GIT_WORK_TREE: target,
+    };
+    const r = spawnSync(process.execPath, [SCRIPT, 'copy', 'prod', target], { env, encoding: 'utf8' });
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stderr, /not a worktree of dev\/prod/);
+    assert.ok(!fs.existsSync(path.join(target, '.env')));
+  } finally {
+    fs.rmSync(path.join(target, '.env'), { force: true });
+    fs.rmSync(path.join(target, '.env.local'), { force: true });
+    run('off');
+  }
+});
+
+test('a worktree nested deeper than tmp/worktrees/<name> is refused', () => {
+  turnOn();
+  const nested = path.join(wtDir('group'), 'wt2');
+  try {
+    git(prod, 'worktree', 'add', '-q', '-b', 'w-nested', nested);
+    const r = run('copy', 'prod', nested);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stderr, /direct child of tmp\/worktrees/);
+    assert.ok(!fs.existsSync(path.join(nested, '.env')));
+  } finally {
+    git(prod, 'worktree', 'remove', '--force', nested);
+    run('off');
+  }
+});
+
+test('a linked dev/<product> folder is refused', { skip: process.platform !== 'win32' && 'junctions are Windows-only' }, () => {
+  turnOn();
+  const link = path.join(root, 'dev', 'plink');
+  try {
+    fs.symlinkSync(prod, link, 'junction');
+    const r = run('copy', 'plink', wt);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stderr, /dev\/plink is a link/);
+    assert.ok(!fs.existsSync(path.join(wt, '.env')));
+  } finally {
+    fs.unlinkSync(link);
+    run('off');
+  }
+});
+
+test('a destination that is a folder is refused', () => {
+  turnOn();
+  try {
+    clean();
+    fs.mkdirSync(path.join(wt, '.env'));
+    const r = run('copy', 'prod', wt, '--overwrite');
+    assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /\.env in the worktree is not a regular file/);
+  } finally {
+    fs.rmSync(path.join(wt, '.env'), { recursive: true, force: true });
+    run('off');
+  }
+});
+
+test('repository config cannot run a program through core.fsmonitor', () => {
+  turnOn();
+  const marker = path.join(root, 'fsmonitor-ran.txt').split(path.sep).join('/');
+  try {
+    clean();
+    git(prod, 'config', 'core.fsmonitor', `node -e "require('fs').writeFileSync('${marker}','x')"`);
+    const r = run('copy', 'prod', wt);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(!fs.existsSync(marker), 'core.fsmonitor ran');
+  } finally {
+    git(prod, 'config', '--unset', 'core.fsmonitor');
+    fs.rmSync(marker, { force: true });
+    clean();
+    run('off');
+  }
+});
+
+test('the temp file must live inside the product repository\'s git folder (a forged .git pointer is refused)', () => {
+  turnOn();
+  const forgedWt = wtDir('forged');
+  const forgedGit = path.join(root, 'forged-gitdir');
+  try {
+    const realGitDir = wtGitDir();
+    fs.cpSync(realGitDir, forgedGit, { recursive: true });
+    fs.cpSync(wt, forgedWt, { recursive: true, filter: (p) => path.basename(p) !== '.git' });
+    fs.writeFileSync(path.join(forgedWt, '.git'), `gitdir: ${forgedGit.split(path.sep).join('/')}\n`);
+    fs.writeFileSync(path.join(forgedGit, 'gitdir'), path.join(forgedWt, '.git').split(path.sep).join('/') + '\n');
+    fs.writeFileSync(path.join(forgedGit, 'commondir'), path.join(prod, '.git').split(path.sep).join('/') + '\n');
+    const r = run('copy', 'prod', forgedWt);
+    assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /git folder is not inside dev\/prod's repository/);
+    assert.ok(!fs.existsSync(path.join(forgedWt, '.env')));
+    assert.deepStrictEqual(fs.readdirSync(forgedGit).filter((n) => n.startsWith('env-copy-')), []);
+  } finally {
+    fs.rmSync(forgedWt, { recursive: true, force: true });
+    fs.rmSync(forgedGit, { recursive: true, force: true });
+    run('off');
   }
 });
 
