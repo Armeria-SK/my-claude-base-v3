@@ -177,7 +177,7 @@ test('a file the worktree does not gitignore is refused', () => {
   const gi = path.join(wt, '.gitignore');
   const orig = fs.readFileSync(gi, 'utf8');
   try {
-    fs.writeFileSync(gi, '.env\n');
+    fs.writeFileSync(gi, '.env\n.env.*.tmp\n');
     const r = run('copy', 'prod', wt);
     assert.strictEqual(r.status, 1);
     assert.match(r.stderr, /\.env\.local is not gitignored/);
@@ -185,6 +185,74 @@ test('a file the worktree does not gitignore is refused', () => {
   } finally {
     fs.writeFileSync(gi, orig);
     run('off');
+  }
+});
+
+test('a hard-linked destination is refused even with --overwrite, and its other name never receives the secret', () => {
+  turnOn();
+  const victim = path.join(root, 'victim.txt');
+  const dest = path.join(wt, '.env');
+  try {
+    clean();
+    fs.writeFileSync(victim, 'ORIGINAL\n');
+    fs.linkSync(victim, dest);
+    for (const extra of [[], ['--overwrite']]) {
+      const r = run('copy', 'prod', wt, ...extra);
+      assert.strictEqual(r.status, 1, r.stdout);
+      assert.match(r.stderr, /\.env in the worktree is a hard link \(2 names\)/);
+      noSecret(r);
+      assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'ORIGINAL\n');
+      assert.strictEqual(fs.readFileSync(dest, 'utf8'), 'ORIGINAL\n');
+    }
+  } finally {
+    clean();
+    fs.rmSync(victim, { force: true });
+    run('off');
+  }
+});
+
+test('--overwrite replaces the destination entry and leaves no temp file behind', () => {
+  turnOn();
+  try {
+    clean();
+    fs.writeFileSync(path.join(wt, '.env'), 'OLD\n');
+    const r = run('copy', 'prod', wt, '--overwrite');
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(fs.readFileSync(path.join(wt, '.env'), 'utf8'), FAKE);
+    assert.deepStrictEqual(fs.readdirSync(wt).filter((n) => n.endsWith('.tmp')), []);
+  } finally {
+    clean();
+    run('off');
+  }
+});
+
+test('a junctioned tmp/worktrees (pointing outside the workspace) is refused', { skip: process.platform !== 'win32' && 'junctions are Windows-only' }, () => {
+  const root2 = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'env-copy-j-')));
+  try {
+    fs.mkdirSync(path.join(root2, '.claude'));
+    fs.writeFileSync(path.join(root2, '.claude', 'env-copy.json'), '{"enabled":true}');
+    const p2 = path.join(root2, 'dev', 'p2');
+    fs.mkdirSync(p2, { recursive: true });
+    git(p2, 'init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(p2, '.gitignore'), '.env\n.env.*\n');
+    git(p2, 'add', '.');
+    git(p2, 'commit', '-q', '-m', 'init');
+    fs.writeFileSync(path.join(p2, '.env'), FAKE);
+    const ext = path.join(root2, 'ext');
+    fs.mkdirSync(ext);
+    git(p2, 'worktree', 'add', '-q', '-b', 'w', path.join(ext, 'w'));
+    fs.mkdirSync(path.join(root2, 'tmp'));
+    fs.symlinkSync(ext, path.join(root2, 'tmp', 'worktrees'), 'junction');
+    const r = spawnSync(process.execPath, [SCRIPT, 'copy', 'p2', path.join(root2, 'tmp', 'worktrees', 'w')], {
+      env: { ...process.env, CLAUDE_PROJECT_DIR: root2 },
+      encoding: 'utf8',
+    });
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stderr, /tmp\/ or tmp\/worktrees\/ is a link/);
+    assert.ok(!fs.existsSync(path.join(ext, 'w', '.env')));
+    fs.unlinkSync(path.join(root2, 'tmp', 'worktrees'));
+  } finally {
+    fs.rmSync(root2, { recursive: true, force: true });
   }
 });
 

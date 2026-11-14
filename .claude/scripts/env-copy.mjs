@@ -60,26 +60,32 @@ const real = (p) => {
     return null;
   }
 };
+const gitRun = (dir, ...a) => spawnSync("git", ["-c", "core.fsmonitor=false", "-C", dir, ...a], { encoding: "utf8" });
 const git = (dir, ...a) => {
-  const r = spawnSync("git", ["-C", dir, ...a], { encoding: "utf8" });
+  const r = gitRun(dir, ...a);
   return r.status === 0 ? r.stdout.trim() : null;
 };
+const ignored = (name) => gitRun(wtReal, "check-ignore", "-q", "--", name).status === 0;
 
 const mode = readEnvCopyMode(root);
 if (!mode.on) refuse(`the env copy switch is off${mode.error ? ` (${mode.error})` : ""}; the owner turns it on with /env-copy on`);
 
 if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(product)) refuse("product must be a plain folder name under dev/");
-const src = path.join(real(root) || root, "dev", product);
+const rootReal = real(root) || root;
+const src = path.join(rootReal, "dev", product);
 const srcReal = real(src);
 if (!srcReal || !fs.statSync(srcReal).isDirectory()) refuse(`dev/${product} does not exist`);
 if (norm(srcReal) !== norm(src)) refuse(`dev/${product} is a link, not a real folder`);
 const srcTop = git(src, "rev-parse", "--show-toplevel");
 if (!srcTop || norm(srcTop) !== norm(srcReal)) refuse(`dev/${product} is not the top of its own git repository`);
 
+const wtBaseLexical = path.join(rootReal, "tmp", "worktrees");
 const wtReal = real(wtArg);
-const wtBase = real(path.join(root, "tmp", "worktrees"));
+const wtBase = real(wtBaseLexical);
 if (!wtReal || !wtBase) refuse("the worktree does not exist");
-if (!norm(wtReal).startsWith(norm(wtBase) + path.sep)) refuse("the worktree must be under tmp/worktrees/ of the workspace");
+if (norm(wtBase) !== norm(wtBaseLexical)) refuse("tmp/ or tmp/worktrees/ is a link, not a real folder");
+const inside = (p) => !!p && norm(p).startsWith(norm(wtBase) + path.sep);
+if (!inside(wtReal)) refuse("the worktree must be under tmp/worktrees/ of the workspace");
 const wtTop = git(wtReal, "rev-parse", "--show-toplevel");
 if (!wtTop || norm(wtTop) !== norm(wtReal)) refuse("the worktree path is not the top of a git worktree");
 const common = (d) => {
@@ -101,9 +107,8 @@ const plan = [];
 for (const name of names) {
   const from = path.join(srcReal, name);
   const to = path.join(wtReal, name);
-  if (spawnSync("git", ["-C", wtReal, "check-ignore", "-q", "--", name]).status !== 0) {
-    refuse(`${name} is not gitignored in the worktree; add it to .gitignore first`);
-  }
+  const tmpName = `${name}.${process.pid}.tmp`;
+  for (const n of [name, tmpName]) if (!ignored(n)) refuse(`${n} is not gitignored in the worktree; add it to .gitignore first`);
   let st = null;
   try {
     st = fs.lstatSync(to);
@@ -111,12 +116,29 @@ for (const name of names) {
     /* absent */
   }
   if (st && !st.isFile()) refuse(`${name} in the worktree is not a regular file`);
+  if (st && st.nlink !== 1) refuse(`${name} in the worktree is a hard link (${st.nlink} names); remove it first`);
   const same = st && fs.readFileSync(from).equals(fs.readFileSync(to));
   if (st && !same && !overwrite) refuse(`${name} already exists in the worktree with different content; pass --overwrite to replace it`);
-  plan.push({ name, from, to, action: !st ? "copied" : same ? "unchanged" : "overwritten" });
+  plan.push({ name, from, to, tmp: path.join(wtReal, tmpName), action: !st ? "copied" : same ? "unchanged" : "overwritten" });
 }
 for (const p of plan) {
-  if (p.action !== "unchanged") fs.copyFileSync(p.from, p.to);
+  if (p.action === "copied") {
+    fs.copyFileSync(p.from, p.to, fs.constants.COPYFILE_EXCL);
+  } else if (p.action === "overwritten") {
+    fs.copyFileSync(p.from, p.tmp, fs.constants.COPYFILE_EXCL);
+    let ok = false;
+    try {
+      const again = fs.lstatSync(p.to);
+      ok = real(wtArg) === wtReal && inside(real(wtReal)) && again.isFile() && again.nlink === 1;
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      fs.rmSync(p.tmp, { force: true });
+      refuse(`${p.name} or the worktree changed while copying; nothing replaced`);
+    }
+    fs.renameSync(p.tmp, p.to);
+  }
   console.log(`${p.action}: ${p.name} (${fs.statSync(p.to).size} bytes)`);
 }
 console.log(`ENV COPY: ${plan.length} file(s) from dev/${product} into ${path.relative(root, wtReal).split(path.sep).join("/")}`);

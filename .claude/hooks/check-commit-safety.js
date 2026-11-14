@@ -13,7 +13,7 @@ const DIFF_MAX_BUFFER = 64 * 1024 * 1024;
 
 const DEBUG_PATTERN = /(console\.log\s*\(|debugger;)/;
 const SECRET_PATTERN =
-  /(sk-[a-zA-Z0-9]{20,}|sk-proj-[a-zA-Z0-9_-]{20,}|ghp_[a-zA-Z0-9]{36,}|github_pat_[a-zA-Z0-9_]{20,}|AKIA[A-Z0-9]{16}|-----BEGIN (RSA |EC )?PRIVATE KEY)/i;
+  /(sk-[a-zA-Z0-9]{20,}|sk-ant-[a-zA-Z0-9_-]{20,}|sk-proj-[a-zA-Z0-9_-]{20,}|ghp_[a-zA-Z0-9]{36,}|github_pat_[a-zA-Z0-9_]{20,}|AKIA[A-Z0-9]{16}|-----BEGIN (RSA |EC )?PRIVATE KEY)/i;
 
 // Detect a `git commit` invocation (any global flags) via the shared tokenizer, and whether
 // it passes -a/--all (including combined short flags like -am).
