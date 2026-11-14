@@ -145,6 +145,45 @@ test('off / status via the scripts and unrelated files pass', () => {
   }
 });
 
+test('a queued or sent prompt that would turn a switch on is denied', () => {
+  for (const [tool, input] of [
+    ['CronCreate', { cron: '0 9 * * *', prompt: '/env-copy on' }],
+    ['ScheduleWakeup', { delaySeconds: 60, prompt: 'then run /FABLE   ON please' }],
+    ['RemoteTrigger', { action: 'run', body: { steps: [{ text: '/ env-copy\ton' }] } }],
+    ['SendMessage', { to: 'main', message: '/fable on' }],
+    ['mcp__scheduled-tasks__create_scheduled_task', { taskId: 't', prompt: '/env-copy on' }],
+    ['mcp__ccd_session__start_session', { prompt: 'x', extra: ['a', { deeper: '/fable on' }] }],
+    ['mcp__ccd_session_mgmt__send_message', { session_id: 's', text: '/env-copy on' }],
+  ]) {
+    const r = guard(tool, input);
+    assert.strictEqual(r.status, 2, `${tool}: ${JSON.stringify(input)}`);
+    assert.match(r.stderr, /may not queue or send a prompt that turns a switch on/);
+  }
+});
+
+test('ordinary prompts, off, and other tools pass', () => {
+  for (const [tool, input] of [
+    ['CronCreate', { cron: '0 9 * * *', prompt: 'run the tests' }],
+    ['SendMessage', { to: 'main', message: '/env-copy off' }],
+    ['SendMessage', { to: 'main', message: 'status: /fable is on? /env-copy status' }],
+    ['ScheduleWakeup', { prompt: '/fable one more pass' }],
+    ['mcp__scheduled-tasks__list_scheduled_tasks', {}],
+    ['Agent', { prompt: '/env-copy on' }],
+  ]) {
+    assert.strictEqual(guard(tool, input).status, 0, `${tool}: ${JSON.stringify(input)}`);
+  }
+});
+
+test('a prompt-tool input too deep or too large to walk is denied (fail closed), without throwing', () => {
+  const deep = `{"tool_name":"CronCreate","tool_input":{"prompt":${'['.repeat(50000)}"x"${']'.repeat(50000)}}}`;
+  const wide = JSON.stringify({ tool_name: 'SendMessage', tool_input: { parts: Array.from({ length: 20000 }, () => 'x') } });
+  for (const input of [deep, wide]) {
+    const r = runRaw(GUARD, input);
+    assert.strictEqual(r.status, 2, r.stderr);
+    assert.match(r.stderr, /too large or deep to inspect/);
+  }
+});
+
 test('the guard exits 0 without throwing on malformed or deeply nested payloads', () => {
   const deep = '['.repeat(50000) + ']'.repeat(50000);
   for (const input of ['', '{nope', 'null', `{"tool_name":"Bash","tool_input":{"command":${deep}}}`, '{"tool_name":"Write","tool_input":null}']) {

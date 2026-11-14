@@ -90,6 +90,15 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-mode-file-write.js\""
           }
         ]
+      },
+      {
+        "matcher": "CronCreate|ScheduleWakeup|RemoteTrigger|SendMessage|mcp__scheduled-tasks__.*|mcp__ccd_session__.*|mcp__ccd_session_mgmt__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-mode-file-write.js\""
+          }
+        ]
       }
     ],
     "UserPromptExpansion": [
