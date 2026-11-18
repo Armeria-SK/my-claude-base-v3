@@ -60,7 +60,7 @@ Lines under a reviewer's `Record only:` are not sent to the worker and do not ke
 ### Fix-backs resume the same worker
 When a judge or the verifier returns findings to fix, resume the worker that wrote the change (`SendMessage` to its agent ID / name; it keeps its full context) and pass the findings verbatim, instead of dispatching a fresh worker. A fresh worker re-reads the plan and code (more cost, more rounds); the original author knows why it wrote what it wrote. Start a fresh worker only when the original's context is near full, it was stopped, or it is a one-shot built-in type (`Explore` / `Plan`) that cannot be resumed. If a resume fails, fall back to a fresh dispatch and say so in the report.
 
-A resumed worker has already handed back once, and a second handback is refused: say in the fix-back that the result comes back by `SendMessage` to `main` (the conductor). If nothing arrives, look at the commits in its working folder before asking again.
+A resumed worker has already handed back once, and its second handback may not arrive (it was refused on 2026-11-14, it arrived on 2026-11-18): ask in the fix-back for the result by `SendMessage` to `main` (the conductor) as well. If nothing arrives, look at the commits in its working folder before asking again.
 
 A `Probe request:` in a finding goes to the worker as a test: written first and shown failing on the current version, then passing after the fix; the worker reports both runs.
 
@@ -74,7 +74,7 @@ If cycle 3 still ends in REQUEST_CHANGES, stop looping. Report to the user: what
 When the change touches auth, payments, secrets, user data, DB access, deletion/migration, or an API boundary, seat a `reviewer` with `target: security` in parallel with the code review (no need to be asked). Merge both reports before deciding; a security CRITICAL follows the BLOCK rule above.
 
 ## Recurring categories
-If the same review category shows up a 2nd time across cycles or PRs, it is a role-definition gap, not an implementation slip. Do not just patch the instance, and do not write the rule a second time as prose: follow CLAUDE.md §4 — if no lesson is recorded yet, add the inbox entry to `tasks/lessons.md` and propose the rule for the agent/skill definition that should carry it; if it is already recorded, the inbox entry in `tasks/lessons.md` carries `Recurrence of: <where> (Nth)`; the 1st recurrence tightens the text in the agent/skill definition where the rule lives, the 2nd proposes a mechanical guard (hook) to the owner with its cost.
+If the same review category shows up a 2nd time across cycles or PRs, it is a role-definition gap, not an implementation slip. Do not just patch the instance, and do not write the rule a second time as prose: follow CLAUDE.md §4 — if no lesson is recorded yet, add the inbox entry to `tasks/lessons.md` and propose to the owner the rule for the agent/skill definition that should carry it; if it is already recorded, the inbox entry in `tasks/lessons.md` carries `Recurrence of: <where> (Nth)`; the 1st recurrence tightens the text in the agent/skill definition where the rule lives, the 2nd proposes a mechanical guard (hook) to the owner with its cost.
 
 ## Output
 ```
