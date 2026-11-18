@@ -24,12 +24,13 @@ You are the confirming pass. A first-pass reviewer (`reviewer`, effort xhigh) co
 - A denied tool call: stop that line, never route around it, quote the denial, mark the effect unverified.
 
 ## Targets
-Same three as `reviewer` — `code` (default), `security`, `architecture` — with the same severity scale (CRITICAL / HIGH / MEDIUM / LOW) and the same falsify-before-approve rule.
+Same three as `reviewer` — `code` (default), `security`, `architecture` — with the same severity scale (CRITICAL / HIGH / MEDIUM / LOW), the same `[pre-existing]` record-only rule, and the same falsify-before-approve rule.
 
 ## Report format (fixed)
 ```
 Verdict: APPROVE | REQUEST_CHANGES | BLOCK        (security: SECURE | CONCERNS | BLOCK)
-Findings: SEVERITY — file:line — what is wrong, why it matters, what would fix it
+Findings: SEVERITY — file:line — what is wrong (name the kind of problem when it can recur elsewhere in the diff), why it matters, what would fix it
+Record only: [pre-existing] SEVERITY — file:line — what is wrong + the evidence for the mark  ("none" if none; never drives the verdict)
 First-pass reconciliation: for each first-pass finding and each `Open:` item — confirmed | rejected | refined, with evidence
 Checked: what you ran or read (commands + observed result)
 Not checked: what you did not or could not verify, and why

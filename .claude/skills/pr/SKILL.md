@@ -46,6 +46,12 @@ gh pr create --title "<conventional title>" --body "$(cat <<'EOF'
 ## Test plan
 - [ ] <verification steps / tests run and their results>
 
+## リスク
+- <この変更で起こりうる困りごとと、その影響の範囲。なければ「なし」と理由>
+
+## 元に戻す方法
+- <マージ後に取り消す手順（例: この PR のマージコミットを `git revert -m 1 <マージコミット>` で打ち消すブランチを作り、PR を出す）。それだけでは戻らないもの（データの移行、git の外の設定、すでに外へ出たもの）があればここに書く>
+
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
 )"
@@ -60,5 +66,6 @@ EOF
 - **Never commit or push to `main` directly** — `main` advances only when the user merges the PR (CLAUDE.md §3 Git Workflow; the `block-direct-to-main.js` hook enforces it). The standard PR is one per work unit: a `<YYYY-MM-DD>-<topic>` branch → `main`; `/pr` creates or updates it
 - Do not force push (block-destructive-git.js blocks it)
 - Do not leave the PR body's Test plan empty — write the verification you actually performed (CLAUDE.md §1.2)
+- Do not leave リスク / 元に戻す方法 empty: write plain Japanese the owner can act on without opening the diff; 'なし' needs its reason. The revert is a new branch + PR, never a push to `main` (CLAUDE.md §3)
 - Stack commits addressing review feedback onto the same branch (preserve the PR context)
 - Report the PR result in plain Japanese (what it is, how to merge, the URL) per CLAUDE.md §3

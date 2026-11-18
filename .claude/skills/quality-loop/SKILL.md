@@ -28,17 +28,17 @@ Writer and judge are different instances in independent contexts. The judge is O
 
 ```
 worker produces
-  -> judge (first pass) reviews      pass it: diff/artifact path + PLAN.md path. Never the worker's self-defense.
+  -> judge (first pass) reviews      pass it: diff/artifact path + PLAN.md path. First review: never the worker's self-defense.
        APPROVE, Status RESOLVED, Confidence >= medium  -> verifier -> done
-       REQUEST_CHANGES  -> send the FULL findings back to the same worker (resumed, see below): "fix only the cited spots, no scope expansion"
-                           -> judge (first pass) re-reviews the fix
+       REQUEST_CHANGES  -> send the FULL findings back to the same worker (resumed, see below): "fix the cited spots and every other instance of the same kind inside this change's diff; nothing outside the diff, no scope expansion"
+                           -> code: `reviewer` re-reviews (see Re-review scope); plan: judge (first pass) re-reviews the fix
        Status UNRESOLVED | Confidence low | BLOCK      -> escalate (below)
 ```
 
 ### Escalate to the -deep judge when any of these holds
 1. The first pass returned `Status: UNRESOLVED` or `Confidence: low`.
-2. After one fix round the same finding is still open (first-pass re-review still REQUEST_CHANGES on it) — the two parties are not converging.
-3. The first pass returned `BLOCK` or a CRITICAL finding — confirm before acting on it.
+2. After one fix round the same finding is still open (first-pass re-review still REQUEST_CHANGES on it) — the two parties are not converging. A finding returned as `not fixed (leftover instance)` goes back to the worker once more before this trigger counts.
+3. The first pass returned `BLOCK` or a CRITICAL finding — confirm before acting on it. A CRITICAL under `Record only:` is confirmed the same way before it is taken to the user; it does not hold the loop open.
 4. The first pass and the worker disagree on whether a finding is real and the evidence does not settle it.
 
 Dispatch the -deep judge with: the artifact path, the PLAN.md path, the first-pass report (path or text), and the `Open:` items. It forms its own verdict first, then reconciles. Its verdict decides:
@@ -47,6 +47,13 @@ Dispatch the -deep judge with: the artifact path, the PLAN.md path, the first-pa
 - `UNRESOLVED` → it names the missing input. Take that question to the user; do **not** re-run it (CLAUDE.md §1.5).
 
 The -deep judge runs at most once per loop cycle, and never as the first pass.
+
+### Re-review scope (code loops)
+A re-review is not a second first review. Dispatch `reviewer` with the word "re-review" and pass: the previous report's findings; what the fix changed (the commit range if the worker committed, otherwise the worker's `Changed:` list); and the findings the worker rejected, each with its stated reason (a claim to check, not a verdict). The reviewer settles each previous finding, reviews the fix, and does not re-raise settled ones; outside the fix only HIGH or above comes back as a finding. What a narrow re-review can miss — a fix that breaks something elsewhere — is the verifier's job after APPROVE.
+`reviewer-deep` still forms its own verdict on the whole artifact. When it runs after a fix round, apply the same filter to its report yourself: a new finding below HIGH outside the fix is recorded, not sent back.
+
+### Record-only findings
+Lines under a reviewer's `Record only:` are not sent to the worker and do not keep the loop open. Record them: `plans/{slug}/deviations.md` when a plan exists, otherwise one line in the Backlog of `tasks/todo.md`; list them in the report below.
 
 ### Fix-backs resume the same worker
 When a judge or the verifier returns findings to fix, resume the worker that wrote the change (`SendMessage` to its agent ID / name; it keeps its full context) and pass the findings verbatim, instead of dispatching a fresh worker. A fresh worker re-reads the plan and code (more cost, more rounds); the original author knows why it wrote what it wrote. Start a fresh worker only when the original's context is near full, it was stopped, or it is a one-shot built-in type (`Explore` / `Plan`) that cannot be resumed. If a resume fails, fall back to a fresh dispatch and say so in the report.
@@ -70,5 +77,6 @@ Cycles: N   Judge passes: first xN, deep xN (why escalated)   Fix-backs: resumed
 Verdict: APPROVE | carried over | BLOCKED
 Fixed: ...
 Open: ... (finding, severity, file:line)
+Record only: ... (finding, severity, file:line — recorded where)
 Verifier: PASS | FAIL | INCOMPLETE — evidence
 ```
