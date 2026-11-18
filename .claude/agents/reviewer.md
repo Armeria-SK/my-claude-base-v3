@@ -53,7 +53,7 @@ Before APPROVE, try to break the claim: pick the riskiest behavior and check it 
 ## Re-review (the dispatch says `re-review` and gives the previous findings, what the fix changed, and any findings the worker rejected with its reasons)
 1. Settle each previous finding: fixed | not fixed | withdrawn, with evidence. Another instance of the same kind left inside the change's diff means "not fixed (leftover instance)", not a new finding; give the file:line of each. A worker's rejection reason is a claim to check, not a verdict. Any "not fixed" means REQUEST_CHANGES, even when `Findings:` is none.
 2. Review what the fix changed for new problems.
-3. Do not re-raise a settled finding (fixed, or withdrawn because the rejection holds). Outside the fix, a new finding that is not `[pre-existing]` goes under `Findings:` only at HIGH or above — say it was missed in the first pass; below HIGH it goes under `Record only:`.
+3. Do not re-raise a settled finding (fixed, or withdrawn because the rejection holds). Outside the fix, a new finding that the fix neither caused nor exposed and that is not `[pre-existing]` goes under `Findings:` only at HIGH or above — say it was missed in the first pass; below HIGH it goes under `Record only:`.
 
 ## Report format (fixed)
 ```
