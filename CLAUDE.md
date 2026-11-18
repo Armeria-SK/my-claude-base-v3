@@ -10,7 +10,7 @@
 ---
 
 ## 0. Project Structure
-- `tasks/` — `todo.md` / `lessons.md` + `YYYY-MM/DD.md` (the journal; holds only the human reports `/save-session` appends — no hook writes to it; resuming = read the newest day file's latest report; append-only, never rotate or delete). There is no per-tool-call log — git and the conversation record cover what was done
+- `tasks/` — `todo.md` / `lessons.md` (an inbox, §4) / `lessons-archive.md` + `todo-archive.md` (full text of what left the inbox or the todo; never injected) + `YYYY-MM/DD.md` (the journal; holds only the human reports `/save-session` appends — no hook writes to it; resuming = read the newest day file's latest report; append-only, never rotate or delete). There is no per-tool-call log — git and the conversation record cover what was done
 - `plans/{slug}/` — `PLAN.md` (+ `deviations.md`) produced by `/plan`
 - `.claude/` — agents / skills / commands / hooks / scripts
 - `dev/<product>/` — **every product under development lives here, one folder per product**. Never create product files at the workspace root.
@@ -123,10 +123,13 @@ For big implementation work the owner can move selected agents to Fable without 
 ---
 
 ## 4. Memory
-- Session start: the SessionStart hook injects the Fable mode state (§2), the env copy switch state (§0), the latest saved session report (from the newest `tasks/YYYY-MM/DD.md` that has one), `todo.md`, and `lessons.md`.
-- **On user correction (immediately)**: append to `tasks/lessons.md` — `### [date] Pattern name` + Trigger / Mistake / Fix / Rule. Only repo-specific or hard-won, actionable rules; nothing Googleable.
-- **Recurring review category (2nd occurrence)**: a role-definition gap, not an implementation slip — record the lesson and propose the agent/skill fix to the user.
-- **Write only the increment**: before recording, read what is already recorded and write only what is new. Never re-word an existing entry into a second one — duplication inflates the record and misleads the next session into reading it as fresh progress. Re-confirming something already recorded, with nothing added, adds no entry. This governs *content*; it never shortens a fixed report format (`/save-session`) or edits an existing line (§0 append-only) — an item with nothing new is written as "なし".
+- Session start: the SessionStart hook injects the Fable mode state (§2), the env copy switch state (§0), the latest saved session report, a digest of the lessons inbox (heading + rule per entry), and the head of `todo.md` — each within a fixed character budget; the sum stays under the 10,000-character hook limit.
+- **Where knowledge lives**: policy for every session → this file · this machine and its tools → `.claude/rules/machine.md` (always loaded, every agent; `validate.mjs` caps it) · how to work with the owner → auto memory, written at once · what a role must do → that agent / skill definition · a product → `dev/<product>/CLAUDE.md` · what must never happen → a hook, only by owner ruling.
+- **On user correction (immediately)**: grep the stores and `tasks/lessons-archive.md` first. New and about working with the owner → auto memory. New, anything else → append to the inbox `tasks/lessons.md`: `### [date] Pattern name` + Trigger / Mistake / Fix / Rule (repo-specific or hard-won only; nothing Googleable). Already recorded → inbox entry with `- Recurrence of: <where> (Nth)`.
+- **Routing (`/save-session`)**: each inbox entry goes to its store. It leaves the inbox only after its full text is appended to `tasks/lessons-archive.md`, and only when: its PR is merged and the recorded line is on `origin/main`; or the rule already lives at a cited file:line; or the owner declined it. "No longer applies" is confirmed with the owner (§1.5). Done or superseded `todo.md` lines go to `tasks/todo-archive.md` the same way.
+- **Recurrence**: a repeated rule is not re-recorded as prose. 1st: tighten the text where it lives. 2nd: propose a mechanical guard (hook) to the owner with its cost.
+- **Write only the increment**: before recording, read what is already recorded and write only what is new. This governs *content*; it never shortens a fixed report format (`/save-session`) or edits a journal line (§0 append-only) — an item with nothing new is written as "なし".
+- (until the migration closes) The 50 entries listed in `plans/memory-rebuild/routing.md` move only per the rows the owner approved, and the `todo.md` lines present on 2026-11-18 stay untouched until the owner approves the rows of `plans/memory-rebuild/todo-routing.md`.
 
 ---
 
