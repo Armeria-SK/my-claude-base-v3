@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // SessionStart hook: inject the resume context into Claude's context.
 //   the Fable mode state (CLAUDE.md §2) + the env copy switch (CLAUDE.md §0) + the latest session report (from the newest
-//   tasks/YYYY-MM/DD.md that has one) + todo.md + lessons.md
+//   tasks/YYYY-MM/DD.md that has one) + the head of todo.md + a digest of the lessons inbox (CLAUDE.md §4)
 // Input: Claude Code hook event JSON on stdin. Fail-open.
 //
-// Budget: combined TOTAL_CAP. On overflow the lowest-priority block is trimmed first
-// (lessons -> report -> todo); each block keeps at least MIN_FLOOR.
-// lessons keeps its tail (newest entries), the others keep their head.
+// Budget: every block, label line included, is hard-clipped to its own fixed number of characters
+// (JS string length), head kept. The budgets sum to 9,400; with the joining newlines the output stays
+// under the 10,000-character cap Claude Code puts on additionalContext, whatever the files hold.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -14,9 +14,11 @@ const { projectRoot } = require('./lib/journal-util');
 const { AGENTS, readFableMode } = require('./lib/fable-mode');
 const { readEnvCopyMode } = require('./lib/env-copy-mode');
 
-const TOTAL_CAP = 16 * 1024;
-const MIN_FLOOR = 2 * 1024;
-const JOURNAL_CAP = 4 * 1024;
+const BUDGET = { head: 1200, todo: 5000, report: 1500, inbox: 1200, tmp: 500 };
+const ENV_MAX = 500; // the env copy line's share of the head block; the Fable text gets the rest
+const INBOX_SHOWN = 4;
+const INBOX_HEADING_MAX = 80;
+const INBOX_RULE_MAX = 160;
 const REPORT_HEADING = /^## \d\d:\d\d .*$/gm; // "## HH:MM セッションレポート — ..." written by /save-session
 const SCAN_DAYS = 30; // how many journal day-files back to look for a report
 const MONTH_DIR = /^\d{4}-\d{2}$/; // tasks/YYYY-MM/
@@ -34,27 +36,47 @@ process.stdin.on('end', () => {
   const root = projectRoot(payload);
   const tasks = path.join(root, 'tasks');
 
-  const blocks = [
-    { label: 'TODO', file: path.join(tasks, 'todo.md'), empty: '(no todo recorded yet)', keep: 'head' },
-    { label: 'LATEST SESSION REPORT', empty: '(no session report saved yet)', keep: 'head', load: () => latestReport(tasks) },
-    { label: 'LESSONS', file: path.join(tasks, 'lessons.md'), empty: '(no lessons recorded yet)', keep: 'tail' },
-  ];
-  for (const b of blocks) {
+  const load = (fn) => {
     try {
-      b.text = b.load ? b.load() : fs.readFileSync(b.file, 'utf8');
+      return fn();
     } catch {
-      b.text = null;
+      return null;
     }
-  }
-  fit(blocks);
+  };
+  const block = (label, text, budget) => clipChars(`\n=== ${label} ===\n${text}`, budget);
 
-  const out = ['=== CONTEXT: workspace root ===', `\n=== FABLE MODE ===\n${fableLine(root)}`, `\n=== ENV COPY ===\n${envCopyLine(root)}`];
-  for (const b of blocks) out.push(`\n=== ${b.label} ===\n${b.text == null ? b.empty : b.text}`);
+  const env = clipChars(envCopyLine(root), ENV_MAX);
+  const head = (fable) => `=== CONTEXT: workspace root ===\n\n=== FABLE MODE ===\n${fable}\n\n=== ENV COPY ===\n${env}`;
+  const out = [
+    head(clipChars(fableLine(root), BUDGET.head - head('').length)),
+    block('TODO', load(() => fs.readFileSync(path.join(tasks, 'todo.md'), 'utf8')) ?? '(no todo recorded yet)', BUDGET.todo),
+    block('LATEST SESSION REPORT', load(() => latestReport(tasks)) ?? '(no session report saved yet)', BUDGET.report),
+    block('LESSONS INBOX', load(() => inboxDigest(fs.readFileSync(path.join(tasks, 'lessons.md'), 'utf8'))) ?? '(inbox empty)', BUDGET.inbox),
+  ];
   const leftovers = tmpLeftovers(path.join(root, 'tmp'));
-  if (leftovers) out.push(`\n=== TMP LEFTOVERS ===\n${leftovers}`);
+  if (leftovers) out.push(block('TMP LEFTOVERS', leftovers, BUDGET.tmp));
   console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: out.join('\n') } }));
   process.exit(0);
 });
+
+// tasks/lessons.md is an inbox (CLAUDE.md §4): show the newest entries as heading + Rule line and
+// count the rest, never the file itself. Entries are appended, so the newest are the last ones.
+function inboxDigest(text) {
+  const entries = [];
+  for (const line of text.split(/\r?\n/)) {
+    if (line.startsWith('### ')) entries.push({ heading: line.slice(4).trim() });
+    else if (entries.length && !entries[entries.length - 1].rule && /^\s*(?:[-*]\s*)?\**Rule\b/.test(line)) entries[entries.length - 1].rule = line.trim();
+  }
+  if (!entries.length) return null;
+  const lines = [];
+  for (const e of entries.slice(-INBOX_SHOWN)) {
+    lines.push(clipLine(`- ${e.heading}`, INBOX_HEADING_MAX));
+    if (e.rule) lines.push(clipLine(`  ${e.rule}`, INBOX_RULE_MAX));
+  }
+  const more = entries.length - INBOX_SHOWN;
+  if (more > 0) lines.push(`… ${more} more waiting — route them at the next /save-session (CLAUDE.md §4)`);
+  return lines.join('\n');
+}
 
 // Injected on and off alike: the owner is asked once per session, before the first dispatch of an
 // agent the mode covers, whether to keep or switch the mode (CLAUDE.md §2, Fable mode).
@@ -156,29 +178,19 @@ function latestReport(tasks) {
     const heads = [...text.matchAll(REPORT_HEADING)];
     if (!heads.length) continue;
     const rel = path.relative(path.dirname(tasks), f).split(path.sep).join('/');
-    return `[${rel}]
-` + clip(text.slice(heads[heads.length - 1].index), JOURNAL_CAP, 'head');
+    return `[${rel}]\n` + text.slice(heads[heads.length - 1].index);
   }
   return null;
 }
 
-function clip(text, max, keep) {
-  const buf = Buffer.from(text, 'utf8');
-  if (buf.length <= max) return text;
-  const note = '[trimmed]';
-  return keep === 'tail'
-    ? `${note}\n` + buf.subarray(buf.length - max).toString('utf8').replace(/^\uFFFD+/, '')
-    : buf.subarray(0, max).toString('utf8').replace(/\uFFFD+$/, '') + `\n${note}`;
+// Cut to at most `max` characters (JS string length), never through a surrogate pair; the mark is
+// counted inside `max`.
+function cut(text, max, mark) {
+  if (text.length <= max) return text;
+  let end = Math.max(0, max - mark.length);
+  const c = text.charCodeAt(end - 1);
+  if (c >= 0xd800 && c <= 0xdbff) end--;
+  return text.slice(0, end) + mark;
 }
-
-function fit(blocks) {
-  const size = (b) => (b.text == null ? 0 : Buffer.byteLength(b.text, 'utf8'));
-  let sum = blocks.reduce((a, b) => a + size(b), 0);
-  for (let i = blocks.length - 1; i >= 0 && sum > TOTAL_CAP; i--) {
-    const b = blocks[i];
-    if (b.text == null || size(b) <= MIN_FLOOR) continue;
-    const before = size(b);
-    b.text = clip(b.text, Math.max(MIN_FLOOR, before - (sum - TOTAL_CAP)), b.keep);
-    sum -= before - size(b);
-  }
-}
+const clipChars = (text, max) => cut(text, max, '\n[trimmed]');
+const clipLine = (text, max) => cut(text, max, '\u2026');
