@@ -18,7 +18,7 @@
 //       repo: the branch is resolved IN that repo, not the hook process's cwd
 //   - gh pr merge ...           any flag form (e.g. --admin, --squash) and any global-flag
 //       placement (e.g. `gh --repo o/r pr merge 12`) — merging a PR is another way to advance main
-//   - gh pr create / gh pr edit with a base that is not main/master: `--base x`, `--base=x`,
+//   - gh pr create (alias: new) / gh pr edit with a base that is not main/master: `--base x`, `--base=x`,
 //       `-B x`, `-Bx` (PRs are never stacked on another work branch; one PR from the tip branch
 //       to main instead). No base flag -> allowed (gh uses the repo's default branch).
 //       `-b` is --body: the flag compare is case-sensitive.
@@ -102,7 +102,19 @@
 // block-pr-without-todo.js's header for the same non-detection disclosed for `gh ... pr create`),
 // not introduced or closed by anything in this session.
 //
-// Known limits of the PR base check (gh pr create / gh pr edit), none of them detected:
+// Known limits of the PR base check (gh pr create / new / edit).
+// False denies — body or title text the tokenizer cannot see as quoted is read as the base flag,
+// and the message then names a branch that was never given (the message points to --body-file):
+//   - a PowerShell here-string body (`--body @'...'@`) that mentions `--base x` or holds a word
+//     starting with `-B` (an apostrophe inside it, as in `it's`, also throws the quoting off)
+//   - a Bash body with escaped quotes: `--body "the \"-Bfoo\" form"`
+//   - nested quoting: `--body "$(printf '%s' "a --base feat")"`
+//   - a later line of a multi-line command holding a `-B...` token:
+//     `gh pr create --title x --body y` + newline + `git checkout -B scratch`
+//   - an unquoted `-B...` word as the value of a flag other than --body / -b / --title / -t
+// Not detected:
+//   - the flag itself written in quotes: `gh pr create "--base" feat`, `"--base=feat"` — the shell
+//     strips the quotes and gh receives a real base, but a quoted token is read here as a value
 //   - a `gh` command on a later line of a multi-line command: the tokenizer never splits on a bare
 //     newline, so `git push -u origin x` + newline + `gh pr create --base feat` is one `git`
 //     segment and the gh line is not judged (the same gap as above; pinned as an allow row,
@@ -138,21 +150,28 @@ function ghBaseMessage(sub, base) {
   return (
     `BLOCKED: gh pr ${sub} の取り込み先（--base）に main / master 以外のブランチ「${base}」は指定できません。\n` +
     '別の作業ブランチの上に PR を重ねず、いちばん先のブランチから main への PR を 1 本だけ開いてください' +
-    '（--base を外すか、--base main にします）。'
+    '（--base を外すか、--base main にします）。\n' +
+    '取り込み先を変数や式で渡した場合も止まります（main と直接書いてください）。' +
+    '取り込み先を指定していないのに止まったときは、本文や題名の中の --base や -B で始まる語を読み違えています。' +
+    '本文をファイルに書いて --body-file で渡してください。'
   );
 }
 
-// The value of --base / -B among the tokens after `gh pr create|edit`, or null when no base is
+// The value of --base / -B among the tokens after `gh pr create|new|edit`, or null when no base is
 // given (or the flag has no value). Forms: `--base x`, `--base=x`, `-B x`, `-Bx`, `-B=x`. The last
 // one given wins, as in gh. Case-sensitive: `-b` is --body. A token written inside quotes
-// (rawArgs keeps them) is a value, never the flag, so a quoted body that mentions --base is ignored.
+// (rawArgs keeps them) is a value, never the flag, so a quoted body that mentions --base is ignored;
+// so is the token right after --body / -b / --title / -t.
+const PR_TEXT_VALUE_FLAGS = new Set(['--body', '-b', '--title', '-t']);
 function prBaseValue(args, rawArgs) {
   const unquote = (v) => v.replace(/^(["'])(.*)\1$/, '$2');
   let base = null;
   for (let k = 0; k < args.length; k++) {
     const a = args[k];
     if (/^["']/.test(rawArgs[k] || '')) continue;
-    if (a === '--base' || a === '-B') {
+    if (PR_TEXT_VALUE_FLAGS.has(a)) {
+      k++;
+    } else if (a === '--base' || a === '-B') {
       if (k + 1 < args.length) base = args[k + 1];
       k++;
     } else if (a.startsWith('--base=')) {
@@ -294,7 +313,7 @@ function checkCommand(command) {
         const rest = args.slice(i + 1);
         const j = findSubcmdIndex(rest, GH_GLOBAL_VALUE_FLAGS);
         if (j >= 0 && rest[j] === 'merge') return { message: GH_MERGE_MESSAGE };
-        if (j >= 0 && (rest[j] === 'create' || rest[j] === 'edit')) {
+        if (j >= 0 && (rest[j] === 'create' || rest[j] === 'new' || rest[j] === 'edit')) {
           const base = prBaseValue(rest.slice(j + 1), rawArgs.slice(i + 1 + j + 1));
           if (base !== null && !PROTECTED.has(base)) return { message: ghBaseMessage(rest[j], base) };
         }

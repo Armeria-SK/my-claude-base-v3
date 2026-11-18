@@ -9,7 +9,7 @@ const assert = require('node:assert');
 const { spawnSync } = require('node:child_process');
 
 const HOOK = path.resolve(__dirname, '..', 'check-reply-language.js');
-const { judge, BLOCK_REASON, MIN_LETTERS, MIN_JAPANESE_SHARE, LOG_MAX_LINES } = require(HOOK);
+const { judge, BLOCK_REASON, MIN_LETTERS, MIN_JAPANESE_SHARE, LOG_MAX_LINES, JUDGE_MAX_CHARS } = require(HOOK);
 
 const LOG_REL = path.join('tasks', 'reply-language-log.jsonl');
 
@@ -88,6 +88,21 @@ test('judge: inline code, URLs and file paths are not counted', () => {
     'D:/work/project/src/components/widgets/button.js .claude/hooks/lib/parser.js';
   const short = '確認しました。問題ありません。';
   assert.strictEqual(judge(short + noise.repeat(8)).letters, judge(short).letters);
+});
+
+test('judge: Japanese punctuation is not counted as a Japanese letter', () => {
+  const v = judge('、。「」・'.repeat(50) + 'かな漢字カナ');
+  assert.strictEqual(v.letters, 6);
+  assert.strictEqual(v.share, 1);
+});
+
+test('judge: only the first JUDGE_MAX_CHARS characters are judged', () => {
+  const head = 'あ'.repeat(JUDGE_MAX_CHARS);
+  const tail = ' english words after the judged part'.repeat(5000);
+  const v = judge(head + tail);
+  assert.strictEqual(v.letters, JUDGE_MAX_CHARS);
+  assert.strictEqual(v.drift, false);
+  assert.strictEqual(judge('あ'.repeat(100) + tail).drift, true, 'the same tail inside the judged part counts');
 });
 
 test('judge: English prose with a few Japanese words is drift', () => {

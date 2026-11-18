@@ -17,7 +17,8 @@
 //
 // Judgment: fenced code, inline code, URLs and file paths are removed, then letters are counted.
 // Drift = at least MIN_LETTERS letters remain and fewer than MIN_JAPANESE_SHARE of them are
-// hiragana / katakana / kanji.
+// hiragana / katakana / kanji. Only the first JUDGE_MAX_CHARS characters of the reply are judged:
+// the path pattern is quadratic on a long run without a slash (100k characters took 7 s).
 //
 // Log: <CLAUDE_PROJECT_DIR>/tasks/reply-language-log.jsonl, flagged replies only, at most
 // LOG_MAX_LINES lines. The root is the CLAUDE_PROJECT_DIR environment variable only — never the
@@ -37,6 +38,7 @@ const path = require('node:path');
 
 const MIN_LETTERS = 200;
 const MIN_JAPANESE_SHARE = 0.2;
+const JUDGE_MAX_CHARS = 20000;
 const LOG_MAX_LINES = 500;
 const LOG_HEAD_CHARS = 80;
 const LOG_REL = path.join('tasks', 'reply-language-log.jsonl');
@@ -47,6 +49,7 @@ const BLOCK_REASON =
 
 function judge(text) {
   const prose = String(text)
+    .slice(0, JUDGE_MAX_CHARS)
     .replace(/```[\s\S]*?(?:```|$)/g, ' ')
     .replace(/`[^`\n]*`/g, ' ')
     .replace(/https?:\/\/\S+/g, ' ')
@@ -106,4 +109,4 @@ if (require.main === module) {
   process.exitCode = 0;
 }
 
-module.exports = { judge, BLOCK_REASON, MIN_LETTERS, MIN_JAPANESE_SHARE, LOG_MAX_LINES };
+module.exports = { judge, BLOCK_REASON, MIN_LETTERS, MIN_JAPANESE_SHARE, LOG_MAX_LINES, JUDGE_MAX_CHARS };
