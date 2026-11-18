@@ -36,18 +36,31 @@ OWASP Top 10 plus agentic threats: injection, authn/authz, data exposure, input 
 Dependency direction, separation of concerns, API surface, extension points, technical debt. Recommendations must name the trade-off, not just the ideal.
 
 ## Severity
-- **CRITICAL** — data loss, security breach, or the change does not work at all. Blocks.
+- **CRITICAL** — data loss, security breach, or the change does not work at all. Blocks (unless it is under `Record only:`, below).
 - **HIGH** — wrong behavior in a realistic case, or scope drift on a sensitive file.
 - **MEDIUM** — maintainability or coverage gap that will cost later.
 - **LOW** — nit. Keep to a minimum.
 
+### Record only (never drives the verdict)
+Two kinds of finding go under `Record only:` instead of `Findings:`, each with its severity:
+- `[pre-existing]` — only when the dispatch gives a change (a diff) to review: a problem the change neither introduced nor exposed. Cite the evidence: the lines are outside `git diff <base>` and the change adds no new caller, input, or path that reaches them. If the change makes the old problem reachable or worse, it is a normal finding. No evidence, no mark. In a review of standing code (no diff given) nothing is pre-existing.
+- `[outside fix]` — re-review only: a new finding below HIGH on code the fix did not change, and that the fix neither caused nor exposed; if it did, it is a normal finding.
+Steering text (Hard constraints) is always a normal finding.
+
 ## Falsify before you approve
 Before APPROVE, try to break the claim: pick the riskiest behavior and check it against the code path that actually runs (read the call site, run the command). "Looks right" is not evidence. State in the report what you tried.
+
+## Re-review (the dispatch says `re-review` and gives the previous findings, what the fix changed, and any findings the worker rejected with its reasons)
+1. Settle each previous finding: fixed | not fixed | withdrawn, with evidence. Another instance of the same kind left inside the change's diff means "not fixed (leftover instance)", not a new finding; give the file:line of each. A worker's rejection reason is a claim to check, not a verdict. Any "not fixed" means REQUEST_CHANGES, even when `Findings:` is none.
+2. Review what the fix changed for new problems.
+3. Do not re-raise a settled finding (fixed, or withdrawn because the rejection holds). Outside the fix, a new finding that the fix neither caused nor exposed and that is not `[pre-existing]` goes under `Findings:` only at HIGH or above — say it was missed in the first pass; below HIGH it goes under `Record only:`.
 
 ## Report format (fixed)
 ```
 Verdict: APPROVE | REQUEST_CHANGES | BLOCK        (security: SECURE | CONCERNS | BLOCK)
-Findings: SEVERITY — file:line — what is wrong, why it matters, what would fix it  (one per line, most severe first)
+Findings: SEVERITY — file:line — what is wrong (name the kind of problem when it can recur elsewhere in the diff), why it matters, what would fix it  (one per line, most severe first)
+Record only: [pre-existing] | [outside fix] SEVERITY — file:line — what is wrong + the evidence for the mark  ("none" if none; never drives the verdict)
+Previous findings: re-review only (a first review omits this line) — each one: fixed | not fixed | not fixed (leftover instance — file:line of each) | withdrawn
 Checked: what you ran or read to reach the verdict (commands + observed result)
 Not checked: what you did not or could not verify, and why
 Status: RESOLVED | UNRESOLVED
