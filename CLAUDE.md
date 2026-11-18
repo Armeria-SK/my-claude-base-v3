@@ -77,7 +77,7 @@ Design the dispatch before writing prose:
 
 ## 2. Delegation & Model Tiers
 
-The conductor (main session: Opus at medium effort per `settings.json`) delegates, coordinates, integrates and decides — it **never writes code or non-trivial deliverables itself**. Direct work allowed: single-point config/doc edits, trivial fixes in non-code files, answers and conversation. One task, one subagent; investigation, review, parallel independent tasks, and debugging always go to a subagent — the one exception is a lookup whose target is already pinned down (Rules, below). **Scope handoff: pass the PLAN.md *path*; the worker reads it.**
+The conductor (main session: Opus at medium effort per `settings.json`) delegates, coordinates, integrates and decides — it **never writes non-trivial code or deliverables itself**. Direct work allowed: single-point config/doc edits, the small pinned-down work listed under Rules below, answers and conversation. One task, one subagent; investigation, review, parallel independent tasks, and debugging always go to a subagent — the exceptions are the pinned-down carve-outs (Rules, below). **Scope handoff: pass the PLAN.md *path*; the worker reads it.**
 
 ### Model Tier Policy (single source of truth)
 
@@ -102,7 +102,12 @@ Escalate to the `-deep` twin when: the first pass is `UNRESOLVED` or `Confidence
 ### Rules
 - A tier is declared once, in each agent's frontmatter `model:` alias (`opus` / `haiku`, or `fable` — never a pinned model ID, so version bumps carry over). Skills and docs do not restate concrete model IDs.
 - `enforce-model-tier.js` denies any per-dispatch `model` that differs from the agent's frontmatter family and any per-dispatch `effort` that differs from its frontmatter effort, except the usage-limit fallback above and Fable mode (below). To change a tier, edit the agent file. Do not set `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`.
-- Delegation has a fixed cost: a nested model loop plus a lossy summary on the way back. The one carve-out from "always go to a subagent" above: a **read-only lookup whose target is already pinned down** (one grep, one file, one command, answer read directly) runs inline in the conductor — cheaper and more faithful than a dispatch. It stays a carve-out: the moment the answer needs breadth, many files, bulk output kept out of this context, or any write, it is `explorer` / `chore` per the tier table. Never inline to dodge a delegation you simply don't feel like making.
+- Delegation has a fixed cost: a nested model loop plus a lossy summary on the way back. So work that is already **pinned down** runs inline in the conductor — cheaper and more faithful than a dispatch (owner ruling 2026-11-18). Four carve-outs from "always go to a subagent" above:
+  - **Lookup**: read-only, one grep / one file / one command, answer read directly.
+  - **Small fix**: the place and the new text are both already known — 1–2 lines in one file, code included, no design choice left (a reviewer's cited one-line fix, a typo, a constant). §1.3's trivial exception and §6.1's check rule apply as written. Never for hooks, guards, auth or other critical code (above): those go to `executor` and the judges.
+  - **Single mechanical command**: one move / rename / list / run whose target is named. Deletion still needs the owner's confirmation (§1.5).
+  - **Small plan**: when every signal of the `plan` skill's complexity gate is light (1–2 files, local, low risk, settled requirements), the conductor plans it itself; `planner` is for the heavy path.
+  They stay carve-outs: the moment the work needs breadth, many files, bulk output kept out of this context, a design choice, or a third line, it is `explorer` / `chore` / `executor` / `planner` per the tier table. Never inline to dodge a delegation you simply don't feel like making.
 - Planner and reviewer are read-mostly judge roles: never give review-only agents write-capable tools.
 - **Fix-backs go to the same worker.** When a reviewer or verifier returns findings, resume the worker that wrote the change (`SendMessage` to its agent ID / name) and pass the findings verbatim, instead of dispatching a fresh worker: the author keeps its context and knows why it wrote what it wrote, a fresh worker re-reads everything. Start fresh only if its context is near full, it was stopped, or it is a one-shot built-in type that cannot be resumed; if a resume fails, fall back to a fresh dispatch and say so in the report. Detail: `quality-loop` skill.
 - `node .claude/scripts/validate.mjs` mechanically checks the roster, pins and hook wiring.
