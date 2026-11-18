@@ -68,6 +68,27 @@ for (const twin of ['planner-deep', 'reviewer-deep']) {
   });
 }
 
+test('validate catches: always-loaded rules over the character budget, or carrying frontmatter', () => {
+  const dir = '.claude/rules';
+  const made = !fs.existsSync(dir);
+  const probe = path.join(dir, 'nested', 'zz-validate-probe.md');
+  fs.mkdirSync(path.dirname(probe), { recursive: true });
+  try {
+    fs.writeFileSync(probe, '- a short rule\n');
+    assert.strictEqual(validate().status, 0, 'a small rule file without frontmatter must pass');
+    fs.writeFileSync(probe, 'あ'.repeat(2501));
+    let r = validate();
+    assert.strictEqual(r.status, 1);
+    assert.match(r.stdout, /rules: .*over the 2500-character budget/);
+    fs.writeFileSync(probe, '---\npaths: ["src/**"]\n---\n- a short rule\n');
+    r = validate();
+    assert.strictEqual(r.status, 1);
+    assert.match(r.stdout, /zz-validate-probe\.md: .*frontmatter/);
+  } finally {
+    fs.rmSync(made ? dir : path.dirname(probe), { recursive: true, force: true });
+  }
+});
+
 test('validate catches: a malformed Fable mode file (in a temp root, never the checkout\'s own file)', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-fable-'));
   try {
