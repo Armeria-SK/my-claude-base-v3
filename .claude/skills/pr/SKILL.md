@@ -29,6 +29,8 @@ user-invocable: true
 
 No confirmation step: committing on a work branch is the go-ahead to push it and open (or update) its PR. The base branch is always `main`.
 
+Never stack PRs (a PR whose base is another work branch): merging the lower one does not move the upper one's base to `main` (GitHub does that only when the lower branch is deleted), so the work never reaches `main`. Open one PR from the tip branch to `main` instead. `block-direct-to-main.js` denies `gh pr create` / `new` / `edit` with a base other than `main` / `master`; it does not catch every form (its header lists the gaps) and does not check what a merge delivered — when the owner reports a merge, confirm the commits are on `origin/main` (`git fetch origin`, then `git log origin/main`) before saying it landed.
+
 Run these as two separate tool calls:
 
 ```bash
@@ -56,6 +58,8 @@ gh pr create --title "<conventional title>" --body "$(cat <<'EOF'
 EOF
 )"
 ```
+
+If `gh pr create` returns an error, the PR may exist anyway: run `gh pr list --head <branch>` before every retry and before telling the owner it failed.
 
 ### 4. Report
 - Report the PR URL

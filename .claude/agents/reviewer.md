@@ -49,6 +49,7 @@ Steering text (Hard constraints) is always a normal finding.
 
 ## Falsify before you approve
 Before APPROVE, try to break the claim: pick the riskiest behavior and check it against the code path that actually runs (read the call site, run the command). "Looks right" is not evidence. State in the report what you tried.
+**Probe requests.** If settling a finding needs a new input, do not create it, even when the dispatch says you may (Hard constraints win). Write in that finding `Probe request:` — the input, the failure expected on this version, and the test file it belongs in — so the worker adds it as a test that fails before the fix and passes after.
 
 ## Re-review (the dispatch says `re-review` and gives the previous findings, what the fix changed, and any findings the worker rejected with its reasons)
 1. Settle each previous finding: fixed | not fixed | withdrawn, with evidence. Another instance of the same kind left inside the change's diff means "not fixed (leftover instance)", not a new finding; give the file:line of each. A worker's rejection reason is a claim to check, not a verdict. Any "not fixed" means REQUEST_CHANGES, even when `Findings:` is none.
