@@ -35,6 +35,8 @@ worker produces
        Status UNRESOLVED | Confidence low | BLOCK      -> escalate (below)
 ```
 
+Name in every review dispatch what the worker's report lists as a deviation from its instructions and any limit or constant it added on its own — as points to check, not as its defense. If the report shows an added limit with no reason, have the worker record the reason and what the limit gives up in `deviations.md` (fix-back).
+
 ### Escalate to the -deep judge when any of these holds
 1. The first pass returned `Status: UNRESOLVED` or `Confidence: low`.
 2. After one fix round the same finding is still open (first-pass re-review still REQUEST_CHANGES on it) — the two parties are not converging. A finding returned as `not fixed (leftover instance)` goes back to the worker once more before this trigger counts.
@@ -58,6 +60,10 @@ Lines under a reviewer's `Record only:` are not sent to the worker and do not ke
 ### Fix-backs resume the same worker
 When a judge or the verifier returns findings to fix, resume the worker that wrote the change (`SendMessage` to its agent ID / name; it keeps its full context) and pass the findings verbatim, instead of dispatching a fresh worker. A fresh worker re-reads the plan and code (more cost, more rounds); the original author knows why it wrote what it wrote. Start a fresh worker only when the original's context is near full, it was stopped, or it is a one-shot built-in type (`Explore` / `Plan`) that cannot be resumed. If a resume fails, fall back to a fresh dispatch and say so in the report.
 
+A resumed worker has already handed back once, and its second handback may not arrive (it was refused on 2026-11-14, it arrived on 2026-11-18): ask in the fix-back for the result by `SendMessage` to `main` (the conductor) as well. If nothing arrives, look at the commits in its working folder before asking again.
+
+A `Probe request:` in a finding goes to the worker as a test: written first and shown failing on the current version, then passing after the fix; the worker reports both runs.
+
 ### Usage-limit fallback
 If an agent running on Fable (Fable mode, or an agent file set to Fable) dies on a billing / credit / rate-limit error, restart that role on Opus per CLAUDE.md §2: a fresh dispatch, not a fix-back, and say so in the report.
 
@@ -68,7 +74,7 @@ If cycle 3 still ends in REQUEST_CHANGES, stop looping. Report to the user: what
 When the change touches auth, payments, secrets, user data, DB access, deletion/migration, or an API boundary, seat a `reviewer` with `target: security` in parallel with the code review (no need to be asked). Merge both reports before deciding; a security CRITICAL follows the BLOCK rule above.
 
 ## Recurring categories
-If the same review category shows up a 2nd time across cycles or PRs, it is a role-definition gap, not an implementation slip: record a lesson in `tasks/lessons.md` and propose the fix to the agent/skill definition to the user. Do not just patch the instance.
+If the same review category shows up a 2nd time across cycles or PRs, it is a role-definition gap, not an implementation slip. Do not just patch the instance, and do not write the rule a second time as prose: follow CLAUDE.md §4 — if no lesson is recorded yet, add the inbox entry to `tasks/lessons.md` and propose to the owner the rule for the agent/skill definition that should carry it; if it is already recorded, the inbox entry in `tasks/lessons.md` carries `Recurrence of: <where> (Nth)`; the 1st recurrence tightens the text in the agent/skill definition where the rule lives, the 2nd proposes a mechanical guard (hook) to the owner with its cost.
 
 ## Output
 ```
