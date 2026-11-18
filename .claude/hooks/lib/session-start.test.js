@@ -100,6 +100,15 @@ test('lessons inbox: an entry without a Rule line shows its heading only', () =>
   assert.match(block, /HEAD-1\n- \[2026-11-02\] HEAD-2\n {2}- Rule: RULE-2$/);
 });
 
+test('lessons inbox: a "### " line inside a code fence is not an entry', () => {
+  const block = inboxBlock(inject({ 'tasks/lessons.md': lesson(1, '') + '```\n### FENCED\n- Rule: FENCED-RULE\n```\n- Rule: RULE-AFTER-FENCE\n' }));
+  assert.strictEqual(block, '- [2026-11-01] HEAD-1\n  - Rule: RULE-AFTER-FENCE');
+});
+
+test('lessons inbox: a file starting with a BOM keeps its first entry', () => {
+  assert.match(inboxBlock(inject({ 'tasks/lessons.md': '\uFEFF' + lesson(1) })), /^- \[2026-11-01\] HEAD-1\n/);
+});
+
 const BUDGETS = { HEAD: 1200, TODO: 5000, 'LATEST SESSION REPORT': 1500, 'LESSONS INBOX': 1200, 'TMP LEFTOVERS': 500 };
 // Blocks are joined by one newline and every block after the first opens with "\n=== LABEL ===".
 function blockSizes(ctx) {
@@ -118,6 +127,7 @@ test('every block stays within its character budget and the total within 9,500, 
   const big = (unit, n) => unit.repeat(n);
   const fables = [
     JSON.stringify({ [big('😀あ', 3000)]: { model: 'fable', effort: 'low' } }),
+    '{"executor": 😀}', // broken JSON: the parser's message quotes half of the emoji
     JSON.stringify({ executor: { model: 'fable', effort: 'low' }, 'reviewer-deep': { model: 'fable', effort: 'medium' } }),
   ];
   for (const fable of fables) {

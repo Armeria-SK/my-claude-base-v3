@@ -170,8 +170,8 @@ for (const c of ["env-copy", "fable"]) {
   }
 }
 
-// ---- 7. Always-loaded rules (CLAUDE.md §4): .claude/rules/**/*.md load whole into every session and
-// every agent, so they carry no frontmatter (no path scoping) and stay under one shared budget
+// ---- 7. Always-loaded rules (CLAUDE.md §4): .claude/rules/**/*.md are meant to load whole into every
+// session, so they carry no frontmatter (no path scoping) and stay under one shared budget
 const RULES_MAX_CHARS = 2500;
 const rulesDir = path.join(ROOT, ".claude", "rules");
 if (fs.existsSync(rulesDir)) {

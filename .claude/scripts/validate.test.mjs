@@ -70,7 +70,6 @@ for (const twin of ['planner-deep', 'reviewer-deep']) {
 
 test('validate catches: always-loaded rules over the character budget, or carrying frontmatter', () => {
   const dir = '.claude/rules';
-  const made = !fs.existsSync(dir);
   const probe = path.join(dir, 'nested', 'zz-validate-probe.md');
   fs.mkdirSync(path.dirname(probe), { recursive: true });
   try {
@@ -85,7 +84,14 @@ test('validate catches: always-loaded rules over the character budget, or carryi
     assert.strictEqual(r.status, 1);
     assert.match(r.stdout, /zz-validate-probe\.md: .*frontmatter/);
   } finally {
-    fs.rmSync(made ? dir : path.dirname(probe), { recursive: true, force: true });
+    fs.rmSync(probe, { force: true });
+    for (const d of [path.dirname(probe), dir]) {
+      try {
+        fs.rmdirSync(d); // only when empty: a real rules folder is never removed
+      } catch {
+        /* not empty */
+      }
+    }
   }
 });
 

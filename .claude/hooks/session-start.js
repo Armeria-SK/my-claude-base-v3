@@ -55,7 +55,7 @@ process.stdin.on('end', () => {
   ];
   const leftovers = tmpLeftovers(path.join(root, 'tmp'));
   if (leftovers) out.push(block('TMP LEFTOVERS', leftovers, BUDGET.tmp));
-  console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: out.join('\n') } }));
+  console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: out.join('\n').toWellFormed() } }));
   process.exit(0);
 });
 
@@ -63,7 +63,10 @@ process.stdin.on('end', () => {
 // count the rest, never the file itself. Entries are appended, so the newest are the last ones.
 function inboxDigest(text) {
   const entries = [];
-  for (const line of text.split(/\r?\n/)) {
+  let fenced = false;
+  for (const line of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
+    if (line.startsWith('```')) fenced = !fenced;
+    if (fenced) continue;
     if (line.startsWith('### ')) entries.push({ heading: line.slice(4).trim() });
     else if (entries.length && !entries[entries.length - 1].rule && /^\s*(?:[-*]\s*)?\**Rule\b/.test(line)) entries[entries.length - 1].rule = line.trim();
   }
