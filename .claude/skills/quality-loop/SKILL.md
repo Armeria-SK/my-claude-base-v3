@@ -28,9 +28,9 @@ Writer and judge are different instances in independent contexts. The judge is O
 
 ```
 worker produces
-  -> judge (first pass) reviews      pass it: diff/artifact path + PLAN.md path. First review: never the worker's self-defense.
+  -> judge (first pass) reviews      pass it: diff/artifact path + PLAN.md path. Never the worker's self-defense (one exception: a code re-review, see Re-review scope).
        APPROVE, Status RESOLVED, Confidence >= medium  -> verifier -> done
-       REQUEST_CHANGES  -> send the FULL findings back to the same worker (resumed, see below): "fix the cited spots and every other instance of the same kind inside this change's diff; nothing outside the diff, no scope expansion"
+       REQUEST_CHANGES  -> send the FULL findings back to the same worker (resumed, see below): "fix the cited spots; code loops: also the other instances of the same kind, those only inside this change's diff; outside the diff, only what a cited spot itself requires; no scope expansion"
                            -> code: `reviewer` re-reviews (see Re-review scope); plan: judge (first pass) re-reviews the fix
        Status UNRESOLVED | Confidence low | BLOCK      -> escalate (below)
 ```
@@ -49,8 +49,8 @@ Dispatch the -deep judge with: the artifact path, the PLAN.md path, the first-pa
 The -deep judge runs at most once per loop cycle, and never as the first pass.
 
 ### Re-review scope (code loops)
-A re-review is not a second first review. Dispatch `reviewer` with the word "re-review" and pass: the previous report's findings; what the fix changed (the commit range if the worker committed, otherwise the worker's `Changed:` list); and the findings the worker rejected, each with its stated reason (a claim to check, not a verdict). The reviewer settles each previous finding, reviews the fix, and does not re-raise settled ones; outside the fix only HIGH or above comes back as a finding. What a narrow re-review can miss — a fix that breaks something elsewhere — is the verifier's job after APPROVE.
-`reviewer-deep` still forms its own verdict on the whole artifact. When it runs after a fix round, apply the same filter to its report yourself: a new finding below HIGH outside the fix is recorded, not sent back.
+A re-review is not a second first review. Dispatch `reviewer` with the word "re-review" and pass, in addition to the diff/artifact path (with its base) + PLAN.md path: the previous report's findings; what the fix changed (the commit range if the worker committed, otherwise the worker's `Changed:` list); and the findings the worker rejected, each with its stated reason (a claim to check, not a verdict). The reviewer settles each previous finding, reviews the fix, and does not re-raise settled ones; outside the fix only HIGH or above comes back as a finding. What a narrow re-review can miss — a fix that breaks something elsewhere — is the verifier's job after APPROVE.
+`reviewer-deep` still forms its own verdict on the whole artifact. When it runs after a fix round, apply the same filter to its report yourself: a new finding below HIGH outside the fix is recorded, not sent back. If nothing remains after the filter, treat it as APPROVE → verifier.
 
 ### Record-only findings
 Lines under a reviewer's `Record only:` are not sent to the worker and do not keep the loop open. Record them: `plans/{slug}/deviations.md` when a plan exists, otherwise one line in the Backlog of `tasks/todo.md`; list them in the report below.

@@ -24,7 +24,7 @@ You are the confirming pass. A first-pass reviewer (`reviewer`, effort xhigh) co
 - A denied tool call: stop that line, never route around it, quote the denial, mark the effect unverified.
 
 ## Targets
-Same three as `reviewer` — `code` (default), `security`, `architecture` — with the same severity scale (CRITICAL / HIGH / MEDIUM / LOW), the same `[pre-existing]` record-only rule, and the same falsify-before-approve rule.
+Same three as `reviewer` — `code` (default), `security`, `architecture` — with the same severity scale (CRITICAL / HIGH / MEDIUM / LOW), and the same falsify-before-approve rule. `[pre-existing]` goes under `Record only:` and never drives the verdict: only when a diff is under review, a problem the change neither introduced nor exposed, with the evidence cited (the lines are outside the diff and the change adds no new caller, input, or path that reaches them). Exposed or worsened by the change = a normal finding; no diff given = nothing is pre-existing.
 
 ## Report format (fixed)
 ```
