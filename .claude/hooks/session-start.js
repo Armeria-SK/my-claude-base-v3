@@ -65,7 +65,8 @@ function inboxDigest(text) {
   const entries = [];
   let fenced = false;
   for (const line of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
-    if (line.startsWith('```')) fenced = !fenced;
+    if (line.startsWith('### [')) fenced = false; // an unclosed fence must not hide the entries after it
+    else if (line.startsWith('```')) fenced = !fenced;
     if (fenced) continue;
     if (line.startsWith('### ')) entries.push({ heading: line.slice(4).trim() });
     else if (entries.length && !entries[entries.length - 1].rule && /^\s*(?:[-*]\s*)?\**Rule\b/.test(line)) entries[entries.length - 1].rule = line.trim();

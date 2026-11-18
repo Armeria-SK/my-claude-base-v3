@@ -105,6 +105,11 @@ test('lessons inbox: a "### " line inside a code fence is not an entry', () => {
   assert.strictEqual(block, '- [2026-11-01] HEAD-1\n  - Rule: RULE-AFTER-FENCE');
 });
 
+test('lessons inbox: an unclosed code fence does not hide the entries after it', () => {
+  const block = inboxBlock(inject({ 'tasks/lessons.md': lesson(1) + '```\nnever closed\n\n' + lesson(2) + lesson(3) }));
+  for (const n of [1, 2, 3]) assert.match(block, new RegExp(`HEAD-${n}\\n.*RULE-${n}`));
+});
+
 test('lessons inbox: a file starting with a BOM keeps its first entry', () => {
   assert.match(inboxBlock(inject({ 'tasks/lessons.md': '\uFEFF' + lesson(1) })), /^- \[2026-11-01\] HEAD-1\n/);
 });
