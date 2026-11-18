@@ -62,15 +62,108 @@ test('no tasks directory at all still injects a well-formed context', () => {
   assert.match(ctx, /no todo recorded yet/);
 });
 
-test('todo and lessons are injected alongside the report; a leftover session-state.md is not', () => {
+test('todo is injected alongside the report; a leftover session-state.md is not', () => {
   const ctx = inject({
     'tasks/session-state.md': 'STATE-POINTER',
     'tasks/todo.md': 'TODO-ITEM',
-    'tasks/lessons.md': 'LESSON-RULE',
     'tasks/2026-09/29.md': report('x', 'y'),
   });
-  for (const w of ['TODO-ITEM', 'LESSON-RULE']) assert.match(ctx, new RegExp(w));
+  assert.match(ctx, /TODO-ITEM/);
   assert.doesNotMatch(ctx, /STATE-POINTER|SESSION STATE/);
+});
+
+const inboxBlock = (ctx) => ctx.split('=== LESSONS INBOX ===\n')[1].split('\n\n=== ')[0];
+const lesson = (n, rule = `RULE-${n}`) =>
+  `### [2026-11-0${n}] HEAD-${n}\n- Trigger: TRIGGER-${n}\n- Mistake: MISTAKE-${n}\n- Fix: FIX-${n}\n${rule ? `- Rule: ${rule}\n` : ''}\n`;
+
+test('lessons inbox: heading and Rule line are shown, Trigger / Mistake / Fix are not', () => {
+  const block = inboxBlock(inject({ 'tasks/lessons.md': '# Lessons\n\n' + lesson(1) + lesson(2) }));
+  for (const w of ['HEAD-1', 'RULE-1', 'HEAD-2', 'RULE-2']) assert.match(block, new RegExp(w));
+  assert.doesNotMatch(block, /TRIGGER|MISTAKE|FIX-/);
+  assert.doesNotMatch(block, /more waiting/);
+});
+
+test('lessons inbox: 5 entries show the newest 4 and "1 more waiting"', () => {
+  const block = inboxBlock(inject({ 'tasks/lessons.md': [1, 2, 3, 4, 5].map((n) => lesson(n)).join('') }));
+  for (const n of [2, 3, 4, 5]) assert.match(block, new RegExp(`HEAD-${n}\\n.*RULE-${n}`));
+  assert.doesNotMatch(block, /HEAD-1|RULE-1/);
+  assert.match(block, /… 1 more waiting — route them at the next \/save-session \(CLAUDE\.md §4\)$/);
+});
+
+test('lessons inbox: no file, or a file without entries, reads (inbox empty)', () => {
+  assert.strictEqual(inboxBlock(inject({})), '(inbox empty)');
+  assert.strictEqual(inboxBlock(inject({ 'tasks/lessons.md': '# Lessons\n\nno entries yet\n' })), '(inbox empty)');
+});
+
+test('lessons inbox: an entry without a Rule line shows its heading only', () => {
+  const block = inboxBlock(inject({ 'tasks/lessons.md': lesson(1, '') + lesson(2) }));
+  assert.match(block, /HEAD-1\n- \[2026-11-02\] HEAD-2\n {2}- Rule: RULE-2$/);
+});
+
+test('lessons inbox: a "### " line inside a code fence is not an entry', () => {
+  const block = inboxBlock(inject({ 'tasks/lessons.md': lesson(1, '') + '```\n### FENCED\n- Rule: FENCED-RULE\n```\n- Rule: RULE-AFTER-FENCE\n' }));
+  assert.strictEqual(block, '- [2026-11-01] HEAD-1\n  - Rule: RULE-AFTER-FENCE');
+});
+
+test('lessons inbox: an unclosed code fence does not hide the entries after it', () => {
+  const block = inboxBlock(inject({ 'tasks/lessons.md': lesson(1) + '```\nnever closed\n\n' + lesson(2) + lesson(3) }));
+  for (const n of [1, 2, 3]) assert.match(block, new RegExp(`HEAD-${n}\\n.*RULE-${n}`));
+});
+
+test('lessons inbox: a file starting with a BOM keeps its first entry', () => {
+  assert.match(inboxBlock(inject({ 'tasks/lessons.md': '\uFEFF' + lesson(1) })), /^- \[2026-11-01\] HEAD-1\n/);
+});
+
+const BUDGETS = { HEAD: 1200, TODO: 5000, 'LATEST SESSION REPORT': 1500, 'LESSONS INBOX': 1200, 'TMP LEFTOVERS': 500 };
+// Blocks are joined by one newline and every block after the first opens with "\n=== LABEL ===".
+function blockSizes(ctx) {
+  const cuts = Object.keys(BUDGETS)
+    .slice(1)
+    .map((label) => [label, ctx.indexOf(`\n\n=== ${label} ===\n`)])
+    .filter(([, i]) => i >= 0)
+    .sort((a, b) => a[1] - b[1]);
+  const sizes = { HEAD: cuts[0][1] };
+  cuts.forEach(([label, i], k) => (sizes[label] = (k + 1 < cuts.length ? cuts[k + 1][1] : ctx.length) - (i + 1)));
+  return sizes;
+}
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+test('every block stays within its character budget and the total within 9,500, whatever the files hold', () => {
+  const big = (unit, n) => unit.repeat(n);
+  const fables = [
+    JSON.stringify({ [big('😀あ', 3000)]: { model: 'fable', effort: 'low' } }),
+    '{"executor": 😀}', // broken JSON: the parser's message quotes half of the emoji
+    JSON.stringify({ executor: { model: 'fable', effort: 'low' }, 'reviewer-deep': { model: 'fable', effort: 'medium' } }),
+  ];
+  for (const fable of fables) {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-'));
+    roots.push(base);
+    const root = path.join(base, ...Array.from({ length: 14 }, () => big('深い😀', 20)));
+    assert.ok(root.length > BUDGETS.HEAD - 100, 'the root path alone must nearly fill the head budget');
+    const files = {
+      '.claude/fable-mode.json': fable,
+      '.claude/env-copy.json': '{"enabled":true}',
+      'tasks/todo.md': '## Now\n' + big('- 😀やること\n', 4000),
+      'tasks/lessons.md': [1, 2, 3, 4, 5, 6].map((n) => `### ${big('😀見出し', 100)}${n}\n- Rule: ${big('😀決まり', 200)}\n`).join('\n'),
+      'tasks/2026-09/29.md': '## 10:00 セッションレポート — ' + big('😀報告', 5000),
+    };
+    for (let i = 0; i < 12; i++) files[`tmp/${big('😀', 40)}${i}.log`] = 'x';
+    for (const [rel, text] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+      fs.writeFileSync(path.join(root, rel), text);
+    }
+    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: root }), env: { ...process.env, CLAUDE_PROJECT_DIR: root }, encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const ctx = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
+    const sizes = blockSizes(ctx);
+    assert.deepStrictEqual(Object.keys(sizes).sort(), Object.keys(BUDGETS).sort());
+    for (const [label, n] of Object.entries(sizes)) assert.ok(n <= BUDGETS[label], `${label}: ${n} > ${BUDGETS[label]}`);
+    assert.ok(sizes.TODO > 4900 && sizes['LATEST SESSION REPORT'] > 1400, 'oversized inputs must fill their budgets');
+    assert.ok(ctx.length <= 9500, `total ${ctx.length}`);
+    assert.doesNotMatch(ctx, LONE_SURROGATE);
+    assert.match(ctx, /=== ENV COPY ===\nENV COPY: ON/);
+    assert.match(inboxBlock(ctx), /… 2 more waiting/);
+  }
 });
 
 const reportBlock = (ctx) => ctx.split('=== LATEST SESSION REPORT ===\n')[1].split('\n\n=== ')[0];

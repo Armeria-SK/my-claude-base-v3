@@ -170,6 +170,22 @@ for (const c of ["env-copy", "fable"]) {
   }
 }
 
+// ---- 7. Always-loaded rules (CLAUDE.md §4): .claude/rules/**/*.md are meant to load whole into every
+// session, so they carry no frontmatter (no path scoping) and stay under one shared budget
+const RULES_MAX_CHARS = 2500;
+const rulesDir = path.join(ROOT, ".claude", "rules");
+if (fs.existsSync(rulesDir)) {
+  let rulesChars = 0;
+  for (const e of fs.readdirSync(rulesDir, { withFileTypes: true, recursive: true })) {
+    if (!e.isFile() || !e.name.endsWith(".md")) continue;
+    const p = path.join(e.parentPath, e.name);
+    const text = read(p);
+    rulesChars += text.length;
+    if (/^---\r?\n/.test(text)) fail(rel(p), "always-loaded rule files must not carry frontmatter");
+  }
+  if (rulesChars > RULES_MAX_CHARS) fail("rules", `${rulesChars} characters in .claude/rules — over the ${RULES_MAX_CHARS}-character budget for always-loaded rules`);
+}
+
 // ---- report
 for (const f of findings) console.log(`FINDING  ${f}`);
 console.log(`agents: ${agents.size}  hooks wired: ${wired.size}  findings: ${findings.length}`);
