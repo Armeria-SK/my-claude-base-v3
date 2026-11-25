@@ -5,7 +5,9 @@
   "cleanupPeriodDays": 365,
   "permissions": {
     "allow": [
-      "Bash(node \"D:/my-claude-base-v3/.claude/scripts/env-copy.mjs\" copy *)"
+      "Bash(node \"D:/my-claude-base-v3/.claude/scripts/env-copy.mjs\" copy *)",
+      "Bash(node \"D:/my-claude-base-v3/.claude/scripts/auto-merge.mjs\" merge *)",
+      "Bash(node \"D:/my-claude-base-v3/.claude/scripts/auto-merge.mjs\" check *)"
     ],
     "deny": [
       "Read(./.env)",

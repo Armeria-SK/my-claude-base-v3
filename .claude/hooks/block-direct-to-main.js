@@ -5,7 +5,9 @@
 //         otherwise exit 0.
 //
 // This repository never commits to main directly. Each work unit lives on its own `<YYYY-MM-DD>-<topic>`
-// branch, and main advances ONLY when the user merges the Pull Request (CLAUDE.md §3 Git Workflow).
+// branch, and main advances ONLY when the user merges the Pull Request (CLAUDE.md §3 Git Workflow). The one
+// exception is not made here: a reviewed dev/<product> PR, while the owner's auto-merge switch is on, is merged
+// by scripts/auto-merge.mjs (CLAUDE.md §0). This hook still denies every `gh pr merge`, switch on or off.
 //
 // Blocked:
 //   - git commit ...            while the current branch is main/master (any flags, incl. --amend)
@@ -144,7 +146,10 @@ const GH_GLOBAL_VALUE_FLAGS = new Set(['-R', '--repo']);
 const GH_MERGE_MESSAGE =
   'BLOCKED: gh pr merge is not allowed here.\n' +
   'main は取り込み提案(PR)をユーザー自身がマージしたときだけ進みます。PR の URL を報告して、' +
-  'マージはユーザーに任せてください（`gh pr view --web` で開けます）。';
+  'マージはユーザーに任せてください（`gh pr view --web` で開けます）。\n' +
+  '例外はひとつだけです: 自動マージの切り替えがオンの間、レビューと確認が通った製品（dev/<product>）の PR は、' +
+  '`node "<root>/.claude/scripts/auto-merge.mjs" merge <product> <PR番号> <先頭コミットの sha>` でだけマージできます。' +
+  'それ以外（この作業場そのものの PR、切り替えがオフのとき）は、これまでどおりユーザーがマージします。';
 
 function ghBaseMessage(sub, base) {
   return (
