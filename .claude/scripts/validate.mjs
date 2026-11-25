@@ -162,7 +162,7 @@ const envRel = ENV_FILE.split(path.sep).join("/");
 if (!gitignore.split("\n").some((l) => l.trim() === envRel)) fail(".gitignore", `must ignore ${envRel}`);
 const envMode = readEnvCopyMode(process.env.CLAUDE_PROJECT_DIR || ROOT);
 if (envMode.error) fail(envRel, `${envMode.error} (switch is treated as OFF; run /env-copy on or /env-copy off)`);
-for (const c of ["env-copy", "fable"]) {
+for (const c of ["env-copy", "fable", "auto-merge"]) {
   const f = path.join(ROOT, ".claude", "commands", `${c}.md`);
   const fm = fs.existsSync(f) ? frontmatter(f) : null;
   if (!fm || String(fm["disable-model-invocation"]) !== "true") {
@@ -185,6 +185,13 @@ if (fs.existsSync(rulesDir)) {
   }
   if (rulesChars > RULES_MAX_CHARS) fail("rules", `${rulesChars} characters in .claude/rules — over the ${RULES_MAX_CHARS}-character budget for always-loaded rules`);
 }
+
+// ---- 8. Auto-merge switch (CLAUDE.md §0): its file stays untracked and, when present, is valid
+const { FILE: AUTO_FILE, readAutoMergeMode } = createRequire(import.meta.url)("../hooks/lib/auto-merge-mode.js");
+const autoRel = AUTO_FILE.split(path.sep).join("/");
+if (!gitignore.split("\n").some((l) => l.trim() === autoRel)) fail(".gitignore", `must ignore ${autoRel}`);
+const autoMode = readAutoMergeMode(process.env.CLAUDE_PROJECT_DIR || ROOT);
+if (autoMode.error) fail(autoRel, `${autoMode.error} (switch is treated as OFF; run /auto-merge on or /auto-merge off)`);
 
 // ---- report
 for (const f of findings) console.log(`FINDING  ${f}`);

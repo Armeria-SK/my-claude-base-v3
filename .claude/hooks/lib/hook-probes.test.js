@@ -119,6 +119,12 @@ function run(row) {
     if (v === null) delete env[k];
     else env[k] = v;
   }
+  // row.files: { "<path>": "content" } present only while this row runs (untracked files inside a fixture dir).
+  const files = Object.entries(row.files || {});
+  for (const [p, text] of files) {
+    assert.ok(path.resolve(p).startsWith(BASE + path.sep), `row.files must stay under the fixtures: ${p}`);
+    fs.writeFileSync(p, text);
+  }
   try {
     execFileSync(process.execPath, [path.join(ROOT, row.hook)], {
       input: JSON.stringify(row.payload), env, cwd: row.payload.cwd || dirs.REPO, stdio: 'pipe',
@@ -126,6 +132,8 @@ function run(row) {
     return { exit: 0, stderr: '' };
   } catch (e) {
     return { exit: typeof e.status === 'number' ? e.status : -1, stderr: String(e.stderr || '') };
+  } finally {
+    for (const [p] of files) fs.rmSync(p, { force: true });
   }
 }
 

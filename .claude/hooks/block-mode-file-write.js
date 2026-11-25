@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// PreToolUse hook: agents never write the owner switch files .claude/env-copy.json and .claude/fable-mode.json
-// (CLAUDE.md §0 Env copy, §2 Fable mode). Turning a switch ON is the owner's own "/env-copy on" / "/fable on"
+// PreToolUse hook: agents never write the owner switch files .claude/env-copy.json, .claude/fable-mode.json and
+// .claude/auto-merge.json (CLAUDE.md §0 Env copy and Auto-merge, §2 Fable mode). Turning a switch ON is the owner's
+// own "/env-copy on" / "/fable on" / "/auto-merge on"
 // (owner-mode-on.js); turning it OFF goes through the scripts, whose commands never name these files.
-//   - Write / Edit / MultiEdit / NotebookEdit: denied when the target's file name is one of the two switch files.
-//   - Bash / PowerShell: denied when the command text names either file at all (read, write, delete alike;
+//   - Write / Edit / MultiEdit / NotebookEdit: denied when the target's file name is one of the switch files.
+//   - Bash / PowerShell: denied when the command text names any of the files at all (read, write, delete alike;
 //     the scripts' status / off subcommands are the way to see or clear a switch).
 //     Also denied: any shell command naming owner-mode-on (running the ON hook by hand writes the file).
 //   - CronCreate / ScheduleWakeup / RemoteTrigger / mcp__scheduled-tasks__* / mcp__ccd_session__* /
@@ -22,18 +23,18 @@
 // file) is not caught, and this hook, settings.json and the scripts are themselves agent-editable.
 // Input: hook event JSON on stdin. Output: deny -> message on stderr + exit 2; otherwise exit 0.
 
-const NAMES = ['env-copy.json', 'fable-mode.json'];
+const NAMES = ['env-copy.json', 'fable-mode.json', 'auto-merge.json'];
 const CRON_STORE = 'scheduled_tasks.json';
 const FILE_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
 const SHELL_TOOLS = ['Bash', 'PowerShell'];
 const PROMPT_TOOLS = /^(CronCreate|ScheduleWakeup|RemoteTrigger|mcp__scheduled-tasks__.+|mcp__ccd_session__.+|mcp__ccd_session_mgmt__.+)$/;
 const DISPATCH_TOOLS = ['Agent', 'Task', 'Workflow', 'SendMessage'];
 const ON_HOOK = 'owner-mode-on';
-const OWNER_ON = /\/\s*(env-copy|fable)\s+on\b/i;
-const OWNER_ON_WHOLE = /^\s*\/\s*(env-copy|fable)\s+on\s*$/i;
+const OWNER_ON = /\/\s*(env-copy|fable|auto-merge)\s+on\b/i;
+const OWNER_ON_WHOLE = /^\s*\/\s*(env-copy|fable|auto-merge)\s+on\s*$/i;
 const WALK_MAX_DEPTH = 32;
 const WALK_MAX_NODES = 10000;
-const PLANTED = 'a queued or sent prompt that would turn a switch on ("/env-copy on" or "/fable on"); agents may not queue or send one';
+const PLANTED = 'a queued or sent prompt that would turn a switch on ("/env-copy on", "/fable on" or "/auto-merge on"); agents may not queue or send one';
 
 // Windows treats "x.json." / "x.json " / "x.json::$DATA" as x.json, so compare the name Windows would open.
 const baseName = (p) =>
@@ -99,9 +100,9 @@ process.stdin.on('end', () => {
   if (hit) {
     console.error(
       `BLOCKED: ${hit}. ` +
-        'Only the owner turns a switch on, by typing "/env-copy on" or "/fable on" themselves. ' +
+        'Only the owner turns a switch on, by typing "/env-copy on", "/fable on" or "/auto-merge on" themselves. ' +
         'To see or turn one off, run the script with status / off (node "<root>/.claude/scripts/env-copy.mjs" off, ' +
-        'node "<root>/.claude/scripts/fable-mode.mjs" off).'
+        'node "<root>/.claude/scripts/fable-mode.mjs" off, node "<root>/.claude/scripts/auto-merge.mjs" off).'
     );
     process.exit(2);
   }

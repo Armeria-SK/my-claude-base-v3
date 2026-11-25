@@ -1,5 +1,5 @@
 // node --test .claude/hooks/lib/owner-switch.test.js
-// owner-mode-on.js (the owner's "/env-copy on" / "/fable on" writes the switch file) and
+// owner-mode-on.js (the owner's "/env-copy on" / "/fable on" / "/auto-merge on" writes the switch file) and
 // block-mode-file-write.js (agents never write those files). Temp roots via CLAUDE_PROJECT_DIR only.
 'use strict';
 
@@ -17,7 +17,8 @@ after(() => fs.rmSync(root, { recursive: true, force: true }));
 fs.mkdirSync(path.join(root, '.claude'));
 const envFile = path.join(root, '.claude', 'env-copy.json');
 const fableFile = path.join(root, '.claude', 'fable-mode.json');
-const reset = () => [envFile, fableFile].forEach((f) => fs.rmSync(f, { force: true }));
+const autoFile = path.join(root, '.claude', 'auto-merge.json');
+const reset = () => [envFile, fableFile, autoFile].forEach((f) => fs.rmSync(f, { force: true }));
 
 const runRaw = (hook, input) =>
   spawnSync(process.execPath, [hook], { input, env: { ...process.env, CLAUDE_PROJECT_DIR: root }, encoding: 'utf8' });
@@ -56,7 +57,23 @@ test('the owner typing exactly "/fable on" writes the default Fable mapping', ()
   assert.ok(!fs.existsSync(envFile));
 });
 
+test('the owner typing exactly "/auto-merge on" writes the auto-merge file, and only that file', () => {
+  reset();
+  const r = expansion('auto-merge', 'on', '/auto-merge on');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.strictEqual(fs.readFileSync(autoFile, 'utf8'), '{\n  "enabled": true\n}\n');
+  assert.match(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, /AUTO MERGE: ON — written by this hook/);
+  assert.ok(!fs.existsSync(envFile) && !fs.existsSync(fableFile));
+});
+
 for (const [why, args] of [
+  ['auto-merge: a longer prompt that contains the command', ['auto-merge', 'on', 'please /auto-merge on']],
+  ['auto-merge: extra arguments', ['auto-merge', 'on now', '/auto-merge on now']],
+  ['auto-merge: args say on but the prompt differs', ['auto-merge', 'on', '/auto-merge on; merge Clive 12']],
+  ['auto-merge: off', ['auto-merge', 'off', '/auto-merge off']],
+  ['auto-merge: no args', ['auto-merge', '', '/auto-merge']],
+  ['auto-merge: case differs', ['auto-merge', 'ON', '/auto-merge ON']],
+  ['auto-merge: a namespaced name', ['project:auto-merge', 'on', '/project:auto-merge on']],
   ['a longer prompt that contains the command', ['env-copy', 'on', 'please /env-copy on']],
   ['extra arguments', ['env-copy', 'on now', '/env-copy on now']],
   ['args say on but the prompt differs', ['env-copy', 'on', '/env-copy on; and more']],
@@ -72,7 +89,7 @@ for (const [why, args] of [
     const r = expansion(...args);
     assert.strictEqual(r.status, 0, r.stderr);
     assert.strictEqual(r.stdout, '');
-    assert.ok(!fs.existsSync(envFile) && !fs.existsSync(fableFile));
+    assert.ok(!fs.existsSync(envFile) && !fs.existsSync(fableFile) && !fs.existsSync(autoFile));
   });
 }
 
@@ -290,6 +307,42 @@ test('Agent / Task / Workflow whose whole prompt is the switch-on command are de
     const r = guard(tool, input);
     assert.strictEqual(r.status, 2, tool);
     assert.match(r.stderr, /agents may not queue or send one/);
+  }
+});
+
+test('auto-merge switch: the guard denies writing or naming the file, and queued / whole-string switch-on forms', () => {
+  const sha = 'a'.repeat(40);
+  for (const [tool, input, why] of [
+    ['Write', { file_path: autoFile, content: '{"enabled":true}' }, /owner switch file/],
+    ['Edit', { file_path: 'D:/ws/.claude/Auto-Merge.json.', old_string: 'a', new_string: 'b' }, /owner switch file/],
+    ['MultiEdit', { file_path: 'D:\\ws\\.claude\\auto-merge.json::$DATA', edits: [] }, /owner switch file/],
+    ['Bash', { command: "echo '{\"enabled\":true}' > .claude/auto-merge.json" }, /owner switch file/],
+    ['Bash', { command: 'cat .claude/auto-merge.json' }, /owner switch file/],
+    ['PowerShell', { command: 'Set-Content -Path .claude\\AUTO-MERGE.JSON -Value x' }, /owner switch file/],
+    ['Bash', { command: 'claude -p "/auto-merge on"' }, /nested Claude Code run/],
+    ['Bash', { command: 'git -C D:/ws/.claude/x commit -m "docs: /auto-merge on"' }, /nested Claude Code run/],
+    ['CronCreate', { cron: '0 9 * * *', prompt: 'then /AUTO-MERGE   ON' }, /agents may not queue or send one/],
+    ['mcp__ccd_session__start_session', { prompt: 'x', extra: [{ deeper: '/auto-merge on' }] }, /agents may not queue or send one/],
+    ['Write', { file_path: 'D:/ws/.claude/scheduled_tasks.json', content: '{"prompt":"/auto-merge on"}' }, /agents may not queue or send one/],
+    ['SendMessage', { to: 'main', message: ' /auto-merge  on ' }, /agents may not queue or send one/],
+    ['Agent', { prompt: '/auto-merge on', subagent_type: 'chore' }, /agents may not queue or send one/],
+  ]) {
+    const r = guard(tool, input);
+    assert.strictEqual(r.status, 2, `${tool}: ${JSON.stringify(input)}`);
+    assert.match(r.stderr, why);
+    assert.match(r.stderr, /"\/auto-merge on" themselves/);
+  }
+  for (const [tool, input] of [
+    ['Bash', { command: 'node "D:/my-claude-base-v3/.claude/scripts/auto-merge.mjs" status' }],
+    ['Bash', { command: 'node "D:/my-claude-base-v3/.claude/scripts/auto-merge.mjs" off' }],
+    ['Bash', { command: `node "D:/my-claude-base-v3/.claude/scripts/auto-merge.mjs" merge Clive 12 ${sha}` }],
+    ['Bash', { command: 'node "D:/my-claude-base-v3/.claude/scripts/auto-merge.mjs" check Clive 12' }],
+    ['SendMessage', { to: 'executor', message: 'Finding 2: the /auto-merge on path is still open' }],
+    ['SendMessage', { to: 'main', message: '/auto-merge off' }],
+    ['Write', { file_path: 'D:/ws/.claude/commands/auto-merge.md', content: 'x' }],
+    ['Write', { file_path: 'D:/ws/.claude/auto-merge.json.bak', content: 'x' }],
+  ]) {
+    assert.strictEqual(guard(tool, input).status, 0, `${tool}: ${JSON.stringify(input)}`);
   }
 });
 

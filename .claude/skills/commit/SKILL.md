@@ -46,6 +46,6 @@ user-invocable: true
 
 ## Rules
 
-- **Never commit to `main` directly.** `main` advances only when the user merges the PR (CLAUDE.md §3 Git Workflow). If you're on `main`, create and switch to a work branch first: `git switch -c $(date +%F)-<topic> main` (`<topic>` = short English kebab-case for the work). If you're already on the right work branch, use it as-is. The `block-direct-to-main.js` hook enforces this.
-- After committing to the work branch, push it and ensure the `<work-branch> → main` PR is created/updated (auto-PR default), then report the result in plain Japanese (CLAUDE.md §3).
+- **Never commit to `main` directly.** `main` advances only when the user merges the PR — or, for a reviewed `dev/<product>` PR while the owner's auto-merge switch is on, when `auto-merge.mjs` merges it (CLAUDE.md §3 Git Workflow). If you're on `main`, create and switch to a work branch first: `git switch -c $(date +%F)-<topic> main` (`<topic>` = short English kebab-case for the work). If you're already on the right work branch, use it as-is. The `block-direct-to-main.js` hook enforces this.
+- After committing to the work branch, push it and ensure the `<work-branch> → main` PR is created/updated (auto-PR default), then report the result in plain Japanese (CLAUDE.md §3). This path never runs the auto-merge step (`pr` skill): a PR opened here has not passed review.
 - If the pre-commit hook fails, fix the cause (don't bypass it)

@@ -40,6 +40,8 @@ const cases = [
   ['env copy file no longer gitignored', '.gitignore', /^\.claude\/env-copy\.json\n?/m, ''],
   ['env-copy command loses disable-model-invocation', '.claude/commands/env-copy.md', /^disable-model-invocation: true\n/m, ''],
   ['fable command loses disable-model-invocation', '.claude/commands/fable.md', /^disable-model-invocation: true\n/m, 'disable-model-invocation: false\n'],
+  ['auto-merge file no longer gitignored', '.gitignore', /^\.claude\/auto-merge\.json\n?/m, ''],
+  ['auto-merge command loses disable-model-invocation', '.claude/commands/auto-merge.md', /^disable-model-invocation: true\n/m, ''],
   ['bad § citation', '.claude/skills/check/SKILL.md', /CLAUDE\.md §1\.2/, 'CLAUDE.md §9.9'],
 ];
 for (const [name, file, re, rep] of cases) {
@@ -122,6 +124,22 @@ test('validate catches: a malformed env copy file (in a temp root, never the che
     const r = run();
     assert.strictEqual(r.status, 1);
     assert.match(r.stdout, /env-copy\.json: .*must be exactly/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('validate catches: a malformed auto-merge file (in a temp root, never the checkout\'s own file)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-auto-merge-'));
+  try {
+    fs.mkdirSync(path.join(root, '.claude'));
+    const run = () => spawnSync(process.execPath, ['.claude/scripts/validate.mjs'], { encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
+    fs.writeFileSync(path.join(root, '.claude', 'auto-merge.json'), '{"enabled":true}');
+    assert.strictEqual(run().status, 0, 'a valid switch file must pass');
+    fs.writeFileSync(path.join(root, '.claude', 'auto-merge.json'), '{"enabled":1}');
+    const r = run();
+    assert.strictEqual(r.status, 1);
+    assert.match(r.stdout, /auto-merge\.json: .*must be exactly/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

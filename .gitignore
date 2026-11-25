@@ -19,3 +19,4 @@ assets/
 .claude/scheduled_tasks.lock
 .claude/fable-mode.json
 .claude/env-copy.json
+.claude/auto-merge.json

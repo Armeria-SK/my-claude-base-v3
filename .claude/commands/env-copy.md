@@ -23,7 +23,7 @@ disable-model-invocation: true
 3. 出力をそのまま平易な日本語で伝える: 今オンかオフか。`off` はファイルを消すだけ。
    - ファイルが壊れていると、スイッチはオフ扱いになり、出力に理由が出る。オーナーが `/env-copy on` と打って書き直すか、`off` で消す。
 4. スイッチは `/env-copy off` まで残る（セッションをまたいでも自動では切れない）。
-5. エージェントはこのファイルにも `.claude/fable-mode.json` にも直接触れない（`block-mode-file-write.js` が、名前を含むコマンドと Write / Edit を止める）。ただし文字列で照合しているだけなので、実行時に名前を組み立てるような書き方までは止められない。
+5. エージェントはこのファイルにも `.claude/fable-mode.json`・`.claude/auto-merge.json` にも直接触れない（`block-mode-file-write.js` が、名前を含むコマンドと Write / Edit を止める）。ただし文字列で照合しているだけなので、実行時に名前を組み立てるような書き方までは止められない。
 
 ## オンの間のコピーのしかた
 - コピーは必ず `node "<ルート>/.claude/scripts/env-copy.mjs" copy <product> <worktree の絶対パス>` で行う（SessionStart の `=== ENV COPY ===` に絶対パス付きで出る）。`cp` / `Copy-Item` は使わない。

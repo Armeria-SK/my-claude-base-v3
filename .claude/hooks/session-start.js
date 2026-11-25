@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // SessionStart hook: inject the resume context into Claude's context.
-//   the Fable mode state (CLAUDE.md §2) + the env copy switch (CLAUDE.md §0) + the latest session report (from the newest
+//   the Fable mode state (CLAUDE.md §2) + the env copy and auto-merge switches (CLAUDE.md §0) + the latest session report (from the newest
 //   tasks/YYYY-MM/DD.md that has one) + the head of todo.md + a digest of the lessons inbox (CLAUDE.md §4)
 // Input: Claude Code hook event JSON on stdin. Fail-open.
 //
 // Budget: every block, label line included, is hard-clipped to its own fixed number of characters
-// (JS string length), head kept. The budgets sum to 9,400; with the joining newlines the output stays
+// (JS string length), head kept. The budgets sum to 9,721; with the joining newlines the output stays
 // under the 10,000-character cap Claude Code puts on additionalContext, whatever the files hold.
 
 const fs = require('node:fs');
@@ -13,8 +13,11 @@ const path = require('node:path');
 const { projectRoot } = require('./lib/journal-util');
 const { AGENTS, readFableMode } = require('./lib/fable-mode');
 const { readEnvCopyMode } = require('./lib/env-copy-mode');
+const { readAutoMergeMode } = require('./lib/auto-merge-mode');
 
-const BUDGET = { head: 1200, todo: 5000, report: 1500, inbox: 1200, tmp: 500 };
+const AUTO_MAX = 300; // the auto-merge line, added to the head block on top of the 1200 the Fable and env copy text share
+const AUTO_LABEL = '\n\n=== AUTO MERGE ===\n';
+const BUDGET = { head: 1200 + AUTO_MAX + AUTO_LABEL.length, todo: 5000, report: 1500, inbox: 1200, tmp: 500 };
 const ENV_MAX = 500; // the env copy line's share of the head block; the Fable text gets the rest
 const INBOX_SHOWN = 4;
 const INBOX_HEADING_MAX = 80;
@@ -46,9 +49,10 @@ process.stdin.on('end', () => {
   const block = (label, text, budget) => clipChars(`\n=== ${label} ===\n${text}`, budget);
 
   const env = clipChars(envCopyLine(root), ENV_MAX);
+  const auto = AUTO_LABEL + clipChars(autoMergeLine(root), AUTO_MAX);
   const head = (fable) => `=== CONTEXT: workspace root ===\n\n=== FABLE MODE ===\n${fable}\n\n=== ENV COPY ===\n${env}`;
   const out = [
-    head(clipChars(fableLine(root), BUDGET.head - head('').length)),
+    head(clipChars(fableLine(root), BUDGET.head - AUTO_MAX - AUTO_LABEL.length - head('').length)) + auto,
     block('TODO', load(() => fs.readFileSync(path.join(tasks, 'todo.md'), 'utf8')) ?? '(no todo recorded yet)', BUDGET.todo),
     block('LATEST SESSION REPORT', load(() => latestReport(tasks)) ?? '(no session report saved yet)', BUDGET.report),
     block('LESSONS INBOX', load(() => inboxDigest(fs.readFileSync(path.join(tasks, 'lessons.md'), 'utf8'))) ?? '(inbox empty)', BUDGET.inbox),
@@ -115,6 +119,15 @@ function envCopyLine(root) {
     return `ENV COPY: ON — copy a product's .env into its worktree only via \`node "${script}" copy <product> <worktree>\`; never cp or read it (/env-copy off to stop).`;
   }
   return `ENV COPY: OFF${mode.error ? ` (${mode.error})` : ''} — never copy .env into worktrees (only the owner can allow it, by typing /env-copy on).`;
+}
+
+function autoMergeLine(root) {
+  const mode = readAutoMergeMode(root);
+  const script = path.join(root, '.claude', 'scripts', 'auto-merge.mjs').split(path.sep).join('/');
+  if (mode.on) {
+    return `AUTO MERGE: ON — product PRs only (dev/<product>), after review APPROVE + check PASS for the PR head: node "${script}" merge <product> <PR#> <head-sha>; never gh pr merge; workspace PRs stay with the owner`;
+  }
+  return `AUTO MERGE: OFF${mode.error ? ` (${mode.error})` : ''} — the owner merges every PR`;
 }
 
 // tmp/ is delete-after-use (CLAUDE.md §0). Report what is left so it gets cleaned, but never delete

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// UserPromptExpansion hook: the only path that turns the owner switches ON (CLAUDE.md §0 Env copy,
-// §2 Fable mode). When a "/env-copy on" or "/fable on" command expands, this hook writes the mode file
+// UserPromptExpansion hook: the only path that turns the owner switches ON (CLAUDE.md §0 Env copy and
+// Auto-merge, §2 Fable mode). When a "/env-copy on", "/fable on" or "/auto-merge on" command expands, this hook writes the mode file
 // itself; the scripts no longer accept "on". It checks expansion_type, command_name, command_args ("on"
 // only) and the prompt; Claude Code rebuilds that prompt as "/<name> <args>", so this is a check on the
 // expanded command, not on the raw text the owner typed (a line elsewhere in a stacked owner message that
@@ -13,10 +13,12 @@ const path = require('node:path');
 const { projectRoot } = require('./lib/journal-util');
 const envCopy = require('./lib/env-copy-mode');
 const fable = require('./lib/fable-mode');
+const autoMerge = require('./lib/auto-merge-mode');
 
 const SWITCHES = {
   'env-copy': { file: envCopy.modeFile, body: () => envCopy.ON_JSON, label: 'ENV COPY' },
   fable: { file: fable.modeFile, body: () => fable.toJson(fable.DEFAULT_MAP), label: 'FABLE MODE' },
+  'auto-merge': { file: autoMerge.modeFile, body: () => autoMerge.ON_JSON, label: 'AUTO MERGE' },
 };
 
 function ownerSwitch(payload) {

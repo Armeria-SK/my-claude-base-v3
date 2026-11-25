@@ -23,6 +23,7 @@ Run every check that applies to what changed (`git status --porcelain`), then re
 - Read pass/fail from the **exit code**, captured with a redirect (`node .claude/scripts/validate.mjs > tmp/validate.log 2>&1; echo "EXIT=$?"`), never through a pipe and never by scanning for failure words. Compare the findings/test count to the previous run when there is one: a check that only looks for "something bad is present" stays silent when the thing it checks has disappeared.
 - node must be on PATH.
 - Captured logs like `tmp/validate.log` are scratch: delete them after reading (CLAUDE.md §0). Before reporting done, delete everything you created in `tmp/`.
+- After PASS for product code: if SessionStart shows `AUTO MERGE: ON` and the change also has its review APPROVE for the same commit, the `pr` skill's Auto-merge section says how the PR is merged; otherwise the owner merges.
 - A failure is fixed and rerun. Do not report "done" on FAIL, and "probably works" is not evidence (CLAUDE.md §1.2).
 
 ## Skipping
