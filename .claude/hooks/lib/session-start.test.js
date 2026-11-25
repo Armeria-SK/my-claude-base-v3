@@ -114,7 +114,10 @@ test('lessons inbox: a file starting with a BOM keeps its first entry', () => {
   assert.match(inboxBlock(inject({ 'tasks/lessons.md': '\uFEFF' + lesson(1) })), /^- \[2026-11-01\] HEAD-1\n/);
 });
 
-const BUDGETS = { HEAD: 1200, TODO: 5000, 'LATEST SESSION REPORT': 1500, 'LESSONS INBOX': 1200, 'TMP LEFTOVERS': 500 };
+const FABLE_ENV_SHARE = 1200; // the head block before the auto-merge part was added; that part must not eat into it
+const AUTO_LABEL = '\n\n=== AUTO MERGE ===\n';
+const AUTO_MAX = 300;
+const BUDGETS = { HEAD: FABLE_ENV_SHARE + AUTO_MAX + AUTO_LABEL.length, TODO: 5000, 'LATEST SESSION REPORT': 1500, 'LESSONS INBOX': 1200, 'TMP LEFTOVERS': 500 };
 // Blocks are joined by one newline and every block after the first opens with "\n=== LABEL ===".
 function blockSizes(ctx) {
   const cuts = Object.keys(BUDGETS)
@@ -128,7 +131,7 @@ function blockSizes(ctx) {
 }
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
-test('every block stays within its character budget and the total within 9,500, whatever the files hold', () => {
+test('every block stays within its character budget and the total within 9,730, whatever the files hold', () => {
   const big = (unit, n) => unit.repeat(n);
   const fables = [
     JSON.stringify({ [big('😀あ', 3000)]: { model: 'fable', effort: 'low' } }),
@@ -139,10 +142,11 @@ test('every block stays within its character budget and the total within 9,500, 
     const base = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-'));
     roots.push(base);
     const root = path.join(base, ...Array.from({ length: 14 }, () => big('深い😀', 20)));
-    assert.ok(root.length > BUDGETS.HEAD - 100, 'the root path alone must nearly fill the head budget');
+    assert.ok(root.length > FABLE_ENV_SHARE - 100, 'the root path alone must nearly fill the Fable + env copy share of the head');
     const files = {
       '.claude/fable-mode.json': fable,
       '.claude/env-copy.json': '{"enabled":true}',
+      '.claude/auto-merge.json': '{"enabled":true}',
       'tasks/todo.md': '## Now\n' + big('- 😀やること\n', 4000),
       'tasks/lessons.md': [1, 2, 3, 4, 5, 6].map((n) => `### ${big('😀見出し', 100)}${n}\n- Rule: ${big('😀決まり', 200)}\n`).join('\n'),
       'tasks/2026-09/29.md': '## 10:00 セッションレポート — ' + big('😀報告', 5000),
@@ -159,9 +163,15 @@ test('every block stays within its character budget and the total within 9,500, 
     assert.deepStrictEqual(Object.keys(sizes).sort(), Object.keys(BUDGETS).sort());
     for (const [label, n] of Object.entries(sizes)) assert.ok(n <= BUDGETS[label], `${label}: ${n} > ${BUDGETS[label]}`);
     assert.ok(sizes.TODO > 4900 && sizes['LATEST SESSION REPORT'] > 1400, 'oversized inputs must fill their budgets');
-    assert.ok(ctx.length <= 9500, `total ${ctx.length}`);
+    assert.ok(ctx.length <= 9730, `total ${ctx.length}`);
     assert.doesNotMatch(ctx, LONE_SURROGATE);
     assert.match(ctx, /=== ENV COPY ===\nENV COPY: ON/);
+    assert.match(ctx, /=== AUTO MERGE ===\nAUTO MERGE: ON/);
+    const autoAt = ctx.indexOf(AUTO_LABEL);
+    assert.ok(autoAt <= FABLE_ENV_SHARE, `Fable + env copy part: ${autoAt} > ${FABLE_ENV_SHARE}`);
+    assert.ok(autoAt > FABLE_ENV_SHARE - 20, 'the Fable text must still be given the whole 1200 share, not less');
+    const autoLen = sizes.HEAD - autoAt - AUTO_LABEL.length;
+    assert.ok(autoLen <= AUTO_MAX && autoLen > AUTO_MAX - 20, `auto-merge line: ${autoLen}`);
     assert.match(inboxBlock(ctx), /… 2 more waiting/);
   }
 });
@@ -250,6 +260,39 @@ test('env copy ON: one line with the absolute copy command', () => {
   assert.ok(block.startsWith('ENV COPY: ON'), block);
   assert.ok(block.includes(`\`node "${script}" copy <product> <worktree>\``), block);
   assert.ok(!block.includes('\n'), 'must stay one line');
+});
+
+const autoBlock = (ctx) => ctx.split('=== AUTO MERGE ===\n')[1].split('\n\n=== ')[0];
+
+test('auto-merge OFF: one line saying the owner merges every PR, no merge command', () => {
+  const ctx = inject({});
+  assert.strictEqual(autoBlock(ctx), 'AUTO MERGE: OFF — the owner merges every PR');
+  assert.ok(ctx.indexOf('=== ENV COPY ===') < ctx.indexOf('=== AUTO MERGE ===') && ctx.indexOf('=== AUTO MERGE ===') < ctx.indexOf('=== TODO ==='));
+});
+
+test('auto-merge ON: one line with the absolute merge command and the limits', () => {
+  const block = autoBlock(inject({ '.claude/auto-merge.json': '{"enabled":true}' }));
+  const script = path.join(roots[roots.length - 1], '.claude', 'scripts', 'auto-merge.mjs').split(path.sep).join('/');
+  assert.ok(block.startsWith('AUTO MERGE: ON — product PRs only (dev/<product>), after review APPROVE + check PASS for the PR head: '), block);
+  assert.ok(block.includes(`node "${script}" merge <product> <PR#> <head-sha>; never gh pr merge; workspace PRs stay with the owner`), block);
+  assert.ok(!block.includes('\n'), 'must stay one line');
+});
+
+test('auto-merge file malformed or deeply nested: OFF with the reason, not a crash', () => {
+  for (const text of ['{"enabled":"yes"}', `{"enabled":${'['.repeat(10000)}${']'.repeat(10000)}}`]) {
+    const block = autoBlock(inject({ '.claude/auto-merge.json': text }));
+    assert.match(block, /^AUTO MERGE: OFF \(.*must be exactly \{ "enabled": true \} \(got enabled is (string|object)\)\) — the owner merges every PR$/);
+  }
+});
+
+test('the auto-merge part leaves the Fable and env copy text unchanged, whichever state it is in', () => {
+  const on = { executor: { model: 'fable', effort: 'low' } };
+  const a = inject({ '.claude/fable-mode.json': JSON.stringify(on) });
+  const b = inject({ '.claude/fable-mode.json': JSON.stringify(on), '.claude/auto-merge.json': '{"enabled":true}' });
+  const strip = (s, root) => s.split(root.split(path.sep).join('/')).join('<ROOT>');
+  const [ra, rb] = roots.slice(-2);
+  assert.strictEqual(strip(fableBlock(a), ra), strip(fableBlock(b), rb));
+  assert.strictEqual(envBlock(a), envBlock(b));
 });
 
 test('env copy file malformed or deeply nested: OFF with the reason, not a crash', () => {

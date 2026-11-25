@@ -20,7 +20,9 @@
       "Write(./.claude/env-copy.json)",
       "Edit(./.claude/env-copy.json)",
       "Write(./.claude/fable-mode.json)",
-      "Edit(./.claude/fable-mode.json)"
+      "Edit(./.claude/fable-mode.json)",
+      "Write(./.claude/auto-merge.json)",
+      "Edit(./.claude/auto-merge.json)"
     ]
   },
   "hooks": {
