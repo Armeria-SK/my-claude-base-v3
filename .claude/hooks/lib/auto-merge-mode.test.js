@@ -4,7 +4,19 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { parseGithubRemote, identityReasons, repoReasons, prReasons, settleMergeable, checksVerdict } = require('./auto-merge-mode');
+const {
+  parseGithubRemote,
+  identityReasons,
+  repoReasons,
+  prReasons,
+  settleMergeable,
+  checksVerdict,
+  repoRunsChecks,
+  ghArgs,
+  inspectRemote,
+  mergeCommand,
+  mergeOutcome,
+} = require('./auto-merge-mode');
 
 const SHA = 'a'.repeat(40);
 const SHA2 = 'b'.repeat(40);
@@ -248,10 +260,277 @@ test('settleMergeable: a PR that turns into a draft / gets merged while UNKNOWN 
 
 const run = (status, conclusion) => ({ __typename: 'CheckRun', name: 'ci', status, conclusion });
 const ctx = (state) => ({ __typename: 'StatusContext', context: 'ci/x', state });
-const verdict = (rollup) => checksVerdict(rollup);
+const verdict = (rollup) => checksVerdict(rollup, false);
+const ZERO = { passed: 0, failed: 0, pending: 0, unknown: 0 };
 
-test('checksVerdict: no checks at all is "none" and not a reason', () => {
-  assert.deepStrictEqual(verdict([]), { counts: { passed: 0, failed: 0, pending: 0, unknown: 0 }, line: 'checks: none', reasons: [] });
+test('checksVerdict: no checks at all, on a repository that runs none, is "none" and not a reason', () => {
+  assert.deepStrictEqual(checksVerdict([], false), { counts: ZERO, line: 'checks: none', reasons: [] });
+});
+
+test('checksVerdict: rollup [] while the repository is known to run checks is a "not yet" reason', () => {
+  const v = checksVerdict([], true);
+  assert.deepStrictEqual(v.counts, ZERO);
+  assert.strictEqual(v.line, 'checks: none yet (this repository runs checks)');
+  one(v.reasons, /^no checks are registered on this head yet, although the repository runs checks — re-run the same merge later$/);
+});
+
+test('checksVerdict: rollup [] when it could not be read whether the repository runs checks is a reason (fail closed)', () => {
+  for (const unknown of [null, undefined, 0, '', 'false', 1, {}]) {
+    const v = checksVerdict([], unknown);
+    assert.strictEqual(v.line, 'checks: none listed (could not read whether the repository runs checks)');
+    one(v.reasons, /lists no checks and it could not be read whether the repository runs any — not merged/);
+  }
+  one(checksVerdict([]).reasons, /could not be read whether/);
+});
+
+test('checksVerdict: a rollup with entries is judged the same whatever is known about the repository', () => {
+  for (const known of [true, false, null, undefined]) {
+    assert.deepStrictEqual(checksVerdict([run('COMPLETED', 'SUCCESS')], known).reasons, []);
+    one(checksVerdict([run('COMPLETED', 'FAILURE')], known).reasons, /^1 check failed/);
+  }
+});
+
+const WF = (...states) => ({ total_count: states.length, workflows: states.map((state) => ({ name: 'ci', state })) });
+const TIP = (rollup) => ({ data: { repository: { defaultBranchRef: { target: { statusCheckRollup: rollup } } } } });
+
+test('repoRunsChecks: no workflows and no checks on the default branch tip is false', () => {
+  assert.strictEqual(repoRunsChecks(WF(), TIP(null)), false);
+  assert.strictEqual(repoRunsChecks(WF('disabled_manually', 'disabled_inactivity', 'disabled_fork', 'deleted'), TIP(null)), false);
+});
+
+test('repoRunsChecks: an active (or unlisted-state) workflow, or checks on the default branch tip, is true', () => {
+  assert.strictEqual(repoRunsChecks(WF('active'), TIP(null)), true);
+  assert.strictEqual(repoRunsChecks(WF('disabled_manually', 'active'), TIP(null)), true);
+  assert.strictEqual(repoRunsChecks(WF('some_new_state'), TIP(null)), true);
+  assert.strictEqual(repoRunsChecks({ total_count: 1, workflows: [null] }, TIP(null)), true);
+  assert.strictEqual(repoRunsChecks(WF('active'), 'unreadable'), true, 'an active workflow settles it without the tip');
+  assert.strictEqual(repoRunsChecks(WF(), TIP({ state: 'FAILURE' })), true);
+  assert.strictEqual(repoRunsChecks(WF(), TIP({ state: 'SUCCESS' })), true);
+});
+
+test('repoRunsChecks: anything unreadable or incomplete is null, never false', () => {
+  for (const wf of [null, undefined, 'x', [], {}, { total_count: 0 }, { workflows: [] }, { total_count: '0', workflows: [] }]) {
+    assert.strictEqual(repoRunsChecks(wf, TIP(null)), null, JSON.stringify(wf));
+  }
+  for (const tip of [null, undefined, 'x', {}, { data: null }, { data: { repository: null } }, { data: { repository: { defaultBranchRef: null } } },
+    { data: { repository: { defaultBranchRef: { target: null } } } }, { data: { repository: { defaultBranchRef: { target: {} } } } }, TIP(undefined), TIP('SUCCESS'), TIP(0)]) {
+    assert.strictEqual(repoRunsChecks(WF(), tip), null, JSON.stringify(tip));
+  }
+  assert.strictEqual(repoRunsChecks({ total_count: 101, workflows: [{ state: 'disabled_manually' }] }, TIP(null)), null, 'more workflows than were listed');
+});
+
+test('ghArgs: the exact argument lists', () => {
+  assert.deepStrictEqual(ghArgs.repoView('acme/prod', 'nameWithOwner'), ['repo', 'view', 'acme/prod', '--json', 'nameWithOwner']);
+  assert.deepStrictEqual(ghArgs.prView('5', 'acme/prod'), ['pr', 'view', '5', '--repo', 'acme/prod', '--json', 'state,isDraft,baseRefName,headRefName,headRefOid,isCrossRepository,mergeable,statusCheckRollup']);
+  assert.deepStrictEqual(ghArgs.workflows('acme/prod'), ['api', 'repos/acme/prod/actions/workflows?per_page=100']);
+  const tip = ghArgs.tipChecks('acme/prod');
+  assert.deepStrictEqual([tip[0], tip[1], tip[2], tip.slice(4)], ['api', 'graphql', '-f', ['-f', 'o=acme', '-f', 'n=prod']]);
+  assert.match(tip[3], /^query=query\(\$o:String!,\$n:String!\)\{repository\(owner:\$o,name:\$n\)\{defaultBranchRef\{target\{\.\.\. on Commit\{statusCheckRollup\{state\}\}\}\}\}\}$/);
+  assert.deepStrictEqual(ghArgs.merge('5', 'acme/prod', SHA), ['pr', 'merge', '5', '--repo', 'acme/prod', '--merge', '--match-head-commit', SHA]);
+});
+
+test('mergeCommand: only with zero reasons, a read PR, and the pinned head; then exactly --repo <canonical> --merge --match-head-commit <head>', () => {
+  const target = { repo: 'acme/prod-renamed', head: SHA };
+  assert.deepStrictEqual(mergeCommand([], target, '5', SHA), ['pr', 'merge', '5', '--repo', 'acme/prod-renamed', '--merge', '--match-head-commit', SHA]);
+  for (const [reasons, t, sha] of [
+    [['state MERGED'], target, SHA],
+    [[], null, SHA],
+    [[], target, SHA2],
+    [[], target, null],
+    [[], { repo: 'acme/prod', head: SHA2 }, SHA],
+    [[], { repo: 'acme/prod', head: 'abc' }, 'abc'],
+    [[], { repo: 'no-slash', head: SHA }, SHA],
+    [[], { repo: '--admin', head: SHA }, SHA],
+    [[], { head: SHA }, SHA],
+    [undefined, target, SHA],
+    ['', target, SHA],
+  ]) {
+    assert.strictEqual(mergeCommand(reasons, t, '5', sha), null, JSON.stringify([reasons, t, sha]));
+  }
+});
+
+test('mergeOutcome: exit 0 is merged; a gh failure is not merged; a timeout or kill is unknown', () => {
+  assert.deepStrictEqual(mergeOutcome({ errorCode: null, signal: null, status: 0, stderr: '' }), { merged: true, why: '' });
+  const failed = mergeOutcome({ errorCode: null, signal: null, status: 1, stderr: 'Head sha was changed\nmore' });
+  assert.deepStrictEqual(failed, { merged: false, why: 'gh pr merge failed (exit 1): Head sha was changed' });
+  assert.deepStrictEqual(mergeOutcome({ errorCode: 'ENOENT', signal: null, status: null }), { merged: false, why: 'gh could not be started (ENOENT)' });
+  for (const r of [
+    { errorCode: 'ETIMEDOUT', signal: 'SIGTERM', status: null },
+    { errorCode: null, signal: 'SIGTERM', status: null },
+    { errorCode: null, signal: null, status: null },
+    { errorCode: 'ETIMEDOUT', signal: null, status: 0 },
+    null,
+    undefined,
+  ]) {
+    const o = mergeOutcome(r);
+    assert.strictEqual(o.merged, null, JSON.stringify(r));
+    assert.match(o.why, /did not finish|no result/);
+  }
+});
+
+// inspectRemote on a fake io: json(args) answers by the kind of call and records every argument list.
+const OPEN_PR = { ...PR, statusCheckRollup: [run('COMPLETED', 'SUCCESS')] };
+function fakeIo(over = {}) {
+  const calls = [];
+  const answers = {
+    product: { nameWithOwner: 'acme/prod', defaultBranchRef: { name: 'main' }, mergeCommitAllowed: true },
+    workspace: { nameWithOwner: 'acme/ws' },
+    pr: OPEN_PR,
+    workflows: WF(),
+    tip: TIP(null),
+    ...over,
+  };
+  const kind = (a) =>
+    a[0] === 'repo' ? (a[4] === 'nameWithOwner' ? 'workspace' : 'product') : a[0] === 'pr' ? 'pr' : a[1] === 'graphql' ? 'tip' : 'workflows';
+  const io = {
+    json(args) {
+      calls.push(args);
+      const answer = answers[kind(args)];
+      const value = typeof answer === 'function' ? answer(calls.filter((c) => kind(c) === kind(args)).length) : answer;
+      if (value instanceof Error) throw value;
+      return value;
+    },
+    sleep: () => {},
+  };
+  return { io, calls, kinds: () => calls.map(kind) };
+}
+const INPUT = { product: P, workspace: W, prNumber: '5', expectedSha: SHA };
+
+test('inspectRemote: everything holds — no reasons, the target is the canonical repo and the PR head, PR read by --repo <canonical>', () => {
+  const f = fakeIo({ product: { nameWithOwner: 'acme/prod-renamed', defaultBranchRef: { name: 'main' }, mergeCommitAllowed: true } });
+  const r = inspectRemote(INPUT, f.io);
+  assert.deepStrictEqual(r.reasons, []);
+  assert.strictEqual(r.skipped, null);
+  assert.deepStrictEqual(r.target, { repo: 'acme/prod-renamed', head: SHA });
+  assert.deepStrictEqual(r.info, { repo: 'acme/prod-renamed (origin: acme/prod)', head: SHA, mergeable: 'MERGEABLE', checks: 'checks: 1 passed, 0 failed, 0 pending, 0 unknown' });
+  assert.deepStrictEqual(f.calls, [
+    ghArgs.repoView('acme/prod', 'nameWithOwner,defaultBranchRef,mergeCommitAllowed'),
+    ghArgs.repoView('acme/ws', 'nameWithOwner'),
+    ghArgs.prView('5', 'acme/prod-renamed'),
+  ]);
+  assert.deepStrictEqual(mergeCommand(r.reasons, r.target, '5', SHA), ghArgs.merge('5', 'acme/prod-renamed', SHA));
+});
+
+test('inspectRemote: origin strings that fail identity end before any gh call', () => {
+  for (const product of [{ owner: 'other', name: 'x' }, { owner: 'ACME', name: 'WS' }]) {
+    const f = fakeIo();
+    const r = inspectRemote({ ...INPUT, product }, f.io);
+    assert.strictEqual(f.calls.length, 0);
+    assert.strictEqual(r.reasons.length, 1);
+    assert.strictEqual(r.skipped, 'the GitHub repository and the PR');
+    assert.strictEqual(r.target, null);
+  }
+});
+
+test('inspectRemote: a canonical name that is the workspace, or another owner, ends before the PR is read', () => {
+  for (const [product, re] of [
+    [{ nameWithOwner: 'ACME/WS', defaultBranchRef: { name: 'main' }, mergeCommitAllowed: true }, /reaches the workspace repository itself/],
+    [{ nameWithOwner: 'someone-else/prod', defaultBranchRef: { name: 'main' }, mergeCommitAllowed: true }, /owner mismatch on GitHub/],
+    [{ defaultBranchRef: { name: 'main' }, mergeCommitAllowed: true }, /name for the product repository is unreadable/],
+    ['garbage', /name for the product repository is unreadable/],
+  ]) {
+    const f = fakeIo({ product });
+    const r = inspectRemote(INPUT, f.io);
+    one(r.reasons, re);
+    assert.deepStrictEqual(f.kinds(), ['product', 'workspace']);
+    assert.strictEqual(r.skipped, 'the PR');
+    assert.strictEqual(r.target, null);
+    assert.strictEqual(mergeCommand(r.reasons, r.target, '5', SHA), null);
+  }
+  const f = fakeIo({ workspace: {} });
+  one(inspectRemote(INPUT, f.io).reasons, /name for the workspace repository is unreadable/);
+  assert.deepStrictEqual(f.kinds(), ['product', 'workspace']);
+});
+
+test('inspectRemote: a failing gh call is a reason with its message, and ends the inspection', () => {
+  let f = fakeIo({ product: new Error('gh repo view failed (exit 1): Could not resolve') });
+  let r = inspectRemote(INPUT, f.io);
+  assert.deepStrictEqual(r.reasons, ['gh repo view failed (exit 1): Could not resolve']);
+  assert.deepStrictEqual([f.kinds(), r.skipped, r.target], [['product'], 'the GitHub repository and the PR', null]);
+  f = fakeIo({ workspace: new Error('gh repo view failed (ETIMEDOUT)') });
+  r = inspectRemote(INPUT, f.io);
+  assert.deepStrictEqual([r.reasons, f.kinds(), r.skipped, r.target], [['gh repo view failed (ETIMEDOUT)'], ['product', 'workspace'], 'the GitHub repository and the PR', null]);
+  f = fakeIo({ pr: new Error('gh pr view failed (exit 1)') });
+  r = inspectRemote(INPUT, f.io);
+  assert.deepStrictEqual([r.reasons, r.skipped, r.target], [['gh pr view failed (exit 1)'], 'the PR', null]);
+});
+
+test('inspectRemote: repository faults, PR faults, the head pin and failed checks are all carried into the reasons', () => {
+  const f = fakeIo({
+    product: { nameWithOwner: 'acme/prod', defaultBranchRef: { name: 'develop' }, mergeCommitAllowed: false },
+    pr: { ...PR, state: 'CLOSED', headRefOid: SHA2, statusCheckRollup: [run('COMPLETED', 'FAILURE'), run('IN_PROGRESS', '')] },
+  });
+  const r = inspectRemote(INPUT, f.io);
+  for (const re of [/default branch is "develop"/, /does not allow merge commits/, /state CLOSED/, /base branch not inspected/, /head moved: the PR head is b{40}/, /^1 check failed/, /^1 check still running/]) {
+    assert.ok(r.reasons.some((x) => re.test(x)), `${re} in ${JSON.stringify(r.reasons)}`);
+  }
+  assert.strictEqual(r.reasons.length, 7);
+  assert.deepStrictEqual(r.info, { repo: 'acme/prod (origin: acme/prod)', head: SHA2, mergeable: 'not applicable', checks: 'checks: 0 passed, 1 failed, 1 pending, 0 unknown' });
+  assert.strictEqual(r.skipped, null);
+  assert.strictEqual(mergeCommand(r.reasons, r.target, '5', SHA), null);
+});
+
+test('inspectRemote: a single fault in each part is enough to refuse', () => {
+  for (const [over, re, input = INPUT] of [
+    [{ product: { nameWithOwner: 'acme/prod', defaultBranchRef: { name: 'main' }, mergeCommitAllowed: false } }, /does not allow merge commits/],
+    [{ pr: { ...OPEN_PR, isDraft: true } }, /the PR is a draft/],
+    [{ pr: { ...OPEN_PR, baseRefName: 'release' } }, /base is "release"/],
+    [{ pr: { ...OPEN_PR, headRefOid: SHA2 } }, /head moved/],
+    [{}, /head moved/, { ...INPUT, expectedSha: SHA2 }],
+    [{ pr: { ...OPEN_PR, statusCheckRollup: [run('COMPLETED', 'FAILURE')] } }, /^1 check failed/],
+    [{ pr: { ...OPEN_PR, statusCheckRollup: [run('QUEUED', '')] } }, /^1 check still running/],
+    [{ pr: { ...OPEN_PR, statusCheckRollup: null } }, /check results could not be read/],
+    [{ pr: 'garbage' }, /PR data unreadable/],
+  ]) {
+    const r = inspectRemote(input, fakeIo(over).io);
+    assert.ok(r.reasons.length >= 1 && r.reasons.some((x) => re.test(x)), `${re} in ${JSON.stringify(r.reasons)}`);
+    assert.strictEqual(mergeCommand(r.reasons, r.target, input.prNumber, input.expectedSha), null);
+  }
+  assert.strictEqual(inspectRemote(INPUT, fakeIo({ pr: 'garbage' }).io).target, null, 'no target without a readable PR head');
+});
+
+test('inspectRemote: mergeable UNKNOWN is re-read through io, and the settled read is the one judged', () => {
+  const f = fakeIo({ pr: (n) => (n < 3 ? { ...OPEN_PR, mergeable: 'UNKNOWN' } : OPEN_PR) });
+  const r = inspectRemote(INPUT, f.io);
+  assert.deepStrictEqual(r.reasons, []);
+  assert.strictEqual(f.kinds().filter((k) => k === 'pr').length, 3);
+  const stuck = fakeIo({ pr: { ...OPEN_PR, mergeable: 'UNKNOWN' } });
+  one(inspectRemote(INPUT, stuck.io).reasons, /mergeable still UNKNOWN/);
+  assert.strictEqual(stuck.kinds().filter((k) => k === 'pr').length, 6);
+});
+
+test('inspectRemote: an empty rollup asks whether the repository runs checks — none: no reason; runs checks: "not yet"; unreadable: refused', () => {
+  const empty = { ...PR, statusCheckRollup: [] };
+  let f = fakeIo({ pr: empty });
+  let r = inspectRemote(INPUT, f.io);
+  assert.deepStrictEqual([r.reasons, r.info.checks], [[], 'checks: none']);
+  assert.deepStrictEqual(f.calls.slice(3), [ghArgs.workflows('acme/prod'), ghArgs.tipChecks('acme/prod')]);
+  assert.deepStrictEqual(r.target, { repo: 'acme/prod', head: SHA });
+
+  for (const over of [{ workflows: WF('active') }, { tip: TIP({ state: 'FAILURE' }) }]) {
+    r = inspectRemote(INPUT, fakeIo({ pr: empty, ...over }).io);
+    one(r.reasons, /no checks are registered on this head yet, although the repository runs checks — re-run the same merge later/);
+    assert.strictEqual(r.info.checks, 'checks: none yet (this repository runs checks)');
+    assert.strictEqual(mergeCommand(r.reasons, r.target, '5', SHA), null);
+  }
+
+  for (const over of [{ workflows: 'garbage' }, { tip: {} }]) {
+    r = inspectRemote(INPUT, fakeIo({ pr: empty, ...over }).io);
+    one(r.reasons, /could not be read whether the repository runs any — not merged/);
+  }
+  for (const over of [{ workflows: new Error('gh api repos/acme/prod/actions/workflows?per_page=100 failed (exit 1)') }, { tip: new Error('gh api graphql failed (ETIMEDOUT)') }]) {
+    r = inspectRemote(INPUT, fakeIo({ pr: empty, ...over }).io);
+    assert.strictEqual(r.reasons.length, 2, JSON.stringify(r.reasons));
+    assert.match(r.reasons[0], /^gh api .* failed/);
+    assert.match(r.reasons[1], /could not be read whether the repository runs any — not merged/);
+    assert.strictEqual(mergeCommand(r.reasons, r.target, '5', SHA), null);
+  }
+});
+
+test('inspectRemote: a rollup with entries never asks about workflows', () => {
+  const f = fakeIo({ workflows: new Error('must not be called'), tip: new Error('must not be called') });
+  assert.deepStrictEqual(inspectRemote(INPUT, f.io).reasons, []);
+  assert.deepStrictEqual(f.kinds(), ['product', 'workspace', 'pr']);
 });
 
 for (const [name, entry, cls] of [

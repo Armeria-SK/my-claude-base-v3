@@ -160,9 +160,31 @@ function classifyCheck(e) {
   return (typeof e.state === 'string' && Object.prototype.hasOwnProperty.call(STATUS_CLASS, e.state) && STATUS_CLASS[e.state]) || 'unknown';
 }
 
-// Step 8, on statusCheckRollup. Any failed, pending or unknown entry is a reason; no entries at all is not.
-function checksVerdict(rollup) {
+// Does this repository run checks at all? Asked only when a PR lists none, to tell "no checks" from "not
+// registered yet" (GitHub registers check runs a moment after a push). workflows: `gh api
+// repos/<o>/<n>/actions/workflows`; tip: the GraphQL answer for the default branch tip's statusCheckRollup.
+// true = an Actions workflow that is not switched off, or checks on the default branch tip (any app);
+// false = neither, read in full; null = could not be read (the caller refuses).
+const WORKFLOW_OFF = ['disabled_manually', 'disabled_inactivity', 'disabled_fork', 'deleted'];
+function repoRunsChecks(workflows, tip) {
+  if (!isObj(workflows) || !Array.isArray(workflows.workflows) || !Number.isInteger(workflows.total_count)) return null;
+  if (workflows.workflows.some((w) => !isObj(w) || !WORKFLOW_OFF.includes(w.state))) return true;
+  const target = isObj(tip) && isObj(tip.data) && isObj(tip.data.repository) && isObj(tip.data.repository.defaultBranchRef) ? tip.data.repository.defaultBranchRef.target : null;
+  if (!isObj(target) || !Object.prototype.hasOwnProperty.call(target, 'statusCheckRollup')) return null;
+  if (target.statusCheckRollup !== null) return isObj(target.statusCheckRollup) ? true : null;
+  return workflows.total_count > workflows.workflows.length ? null : false;
+}
+
+// Step 8, on statusCheckRollup. Any failed, pending or unknown entry is a reason. No entries at all is not a
+// reason only when runsChecks is exactly false (repoRunsChecks): true means the checks are not registered yet,
+// anything else that it could not be read.
+function checksVerdict(rollup, runsChecks) {
   const counts = { passed: 0, failed: 0, pending: 0, unknown: 0 };
+  if (Array.isArray(rollup) && !rollup.length && runsChecks !== false) {
+    return runsChecks === true
+      ? { counts, line: 'checks: none yet (this repository runs checks)', reasons: ['no checks are registered on this head yet, although the repository runs checks — re-run the same merge later'] }
+      : { counts, line: 'checks: none listed (could not read whether the repository runs checks)', reasons: ['the PR lists no checks and it could not be read whether the repository runs any — not merged'] };
+  }
   const listed = Array.isArray(rollup);
   if (listed) for (const e of rollup) counts[classifyCheck(e)]++;
   else counts.unknown = 1; // the rollup itself is the unknown thing; its content is never read as one check
@@ -178,7 +200,111 @@ function checksVerdict(rollup) {
   return { counts, line, reasons };
 }
 
+// The exact gh argument lists scripts/auto-merge.mjs runs (no shell). Every call after the first two names
+// the repository by the canonical name GitHub returned.
+const REPO_FIELDS = 'nameWithOwner,defaultBranchRef,mergeCommitAllowed';
+const PR_FIELDS = 'state,isDraft,baseRefName,headRefName,headRefOid,isCrossRepository,mergeable,statusCheckRollup';
+const TIP_QUERY = 'query($o:String!,$n:String!){repository(owner:$o,name:$n){defaultBranchRef{target{... on Commit{statusCheckRollup{state}}}}}}';
+const ghArgs = {
+  repoView: (name, fields) => ['repo', 'view', name, '--json', fields],
+  prView: (pr, repo) => ['pr', 'view', pr, '--repo', repo, '--json', PR_FIELDS],
+  workflows: (repo) => ['api', `repos/${repo}/actions/workflows?per_page=100`],
+  tipChecks: (repo) => ['api', 'graphql', '-f', `query=${TIP_QUERY}`, '-f', `o=${repo.split('/')[0]}`, '-f', `n=${repo.split('/')[1]}`],
+  merge: (pr, repo, head) => ['pr', 'merge', pr, '--repo', repo, '--merge', '--match-head-commit', head],
+};
+
+// Steps 4-8 as one composition. product / workspace: parsed origins (both non-null). io.json(args) runs gh
+// with that argument list and returns the parsed JSON, or throws an Error whose message is printable;
+// io.sleep(ms) waits. Returns { reasons, info, target, skipped }: target = { repo, head } only when the PR
+// itself was read; skipped names what was not inspected when a reason ended the inspection early.
+const REMOTE = 'the GitHub repository and the PR';
+function inspectRemote({ product, workspace, prNumber, expectedSha }, io) {
+  const reasons = [];
+  const info = { repo: 'not inspected', head: 'not inspected', mergeable: 'not inspected', checks: 'checks: not inspected' };
+  const end = (skipped, target = null) => ({ reasons, info, target, skipped });
+  const said = (e) => String((e && e.message) || 'a gh call failed').slice(0, 300);
+  const read = (args) => {
+    try {
+      return { value: io.json(args) };
+    } catch (e) {
+      reasons.push(said(e));
+      return null;
+    }
+  };
+
+  const early = identityReasons(product, workspace, null, null);
+  if (early.length) {
+    reasons.push(...early);
+    return end(REMOTE);
+  }
+  const repoRead = read(ghArgs.repoView(`${product.owner}/${product.name}`, REPO_FIELDS));
+  const wsRead = repoRead && read(ghArgs.repoView(`${workspace.owner}/${workspace.name}`, 'nameWithOwner'));
+  if (!repoRead || !wsRead) return end(REMOTE);
+  const repo = repoRead.value;
+  const canonical = isObj(repo) ? repo.nameWithOwner : undefined;
+  const identity = identityReasons(product, workspace, canonical ?? '', isObj(wsRead.value) ? (wsRead.value.nameWithOwner ?? '') : '');
+  if (identity.length) {
+    reasons.push(...identity);
+    return end('the PR');
+  }
+  info.repo = `${canonical} (origin: ${product.owner}/${product.name})`;
+  reasons.push(...repoReasons(repo));
+  const defaultBranch = isObj(repo.defaultBranchRef) ? repo.defaultBranchRef.name : undefined;
+
+  let pr;
+  try {
+    pr = settleMergeable(() => io.json(ghArgs.prView(prNumber, canonical)), io.sleep);
+  } catch (e) {
+    reasons.push(said(e));
+    return end('the PR');
+  }
+  const verdict = prReasons(pr, defaultBranch, expectedSha);
+  reasons.push(...verdict.reasons);
+  info.mergeable = verdict.mergeable;
+  const head = isObj(pr) && typeof pr.headRefOid === 'string' && SHA.test(pr.headRefOid) ? pr.headRefOid : null;
+  info.head = head || 'unreadable';
+  const rollup = isObj(pr) ? pr.statusCheckRollup : undefined;
+  let runsChecks = null;
+  if (Array.isArray(rollup) && !rollup.length) {
+    const workflows = read(ghArgs.workflows(canonical));
+    const tip = workflows && read(ghArgs.tipChecks(canonical));
+    if (tip) runsChecks = repoRunsChecks(workflows.value, tip.value);
+  }
+  const checks = checksVerdict(rollup, runsChecks);
+  info.checks = checks.line;
+  reasons.push(...checks.reasons);
+  return end(null, head ? { repo: canonical, head } : null);
+}
+
+// The merge is run only with zero reasons, a PR that was read, and a caller-pinned head equal to the PR's
+// head. Returns the gh argument list, or null (then nothing is run).
+function mergeCommand(reasons, target, prNumber, expectedSha) {
+  if (!Array.isArray(reasons) || reasons.length) return null;
+  if (!isObj(target) || typeof target.repo !== 'string' || !CANONICAL.test(target.repo)) return null;
+  if (typeof expectedSha !== 'string' || !SHA.test(expectedSha) || target.head !== expectedSha) return null;
+  return ghArgs.merge(prNumber, target.repo, target.head);
+}
+
+// What the finished `gh pr merge` process says about the merge. r = { errorCode, signal, status, stderr }.
+// merged: true / false / null. null = the command was started but did not report back (timeout, killed):
+// the merge may have happened, so the caller must look at the PR instead of retrying.
+function mergeOutcome(r) {
+  if (!isObj(r)) return { merged: null, why: 'no result from the merge command' };
+  if (!r.errorCode && !r.signal && r.status === 0) return { merged: true, why: '' };
+  if (r.errorCode === 'ENOENT') return { merged: false, why: 'gh could not be started (ENOENT)' };
+  if (r.errorCode || r.signal || typeof r.status !== 'number') {
+    return { merged: null, why: `gh pr merge did not finish (${r.errorCode || r.signal || 'no exit status'})` };
+  }
+  const first = String(r.stderr || '').trim().split(/\r?\n/)[0].slice(0, 200);
+  return { merged: false, why: `gh pr merge failed (exit ${r.status})${first ? `: ${first}` : ''}` };
+}
+
 module.exports = {
+  repoRunsChecks,
+  ghArgs,
+  inspectRemote,
+  mergeCommand,
+  mergeOutcome,
   FILE,
   ON_JSON,
   modeFile,

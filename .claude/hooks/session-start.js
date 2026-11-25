@@ -5,7 +5,7 @@
 // Input: Claude Code hook event JSON on stdin. Fail-open.
 //
 // Budget: every block, label line included, is hard-clipped to its own fixed number of characters
-// (JS string length), head kept. The budgets sum to 9,722; with the joining newlines the output stays
+// (JS string length), head kept. The budgets sum to 9,721; with the joining newlines the output stays
 // under the 10,000-character cap Claude Code puts on additionalContext, whatever the files hold.
 
 const fs = require('node:fs');

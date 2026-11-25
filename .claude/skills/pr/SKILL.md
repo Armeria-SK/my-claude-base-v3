@@ -86,7 +86,8 @@ Do not judge eligibility yourself (which repo, whose repo, which branch): the sc
 
 **Refused** → report the PR URL and every reason; the owner merges as before. Two cases differ:
 - **A check failed**: that verdict is final for that head (re-running `merge` with the same sha is pointless), but do not hand the PR straight to the owner. Find the cause (`gh pr checks`, the run's log). If it is a fault in the change: fix it, push to the same branch (the PR is updated, never a second PR), take the **new head** through the whole precondition again (quality-loop APPROVE + verifier / `check` PASS for that head), then run `merge` with the new sha. At most 3 such fix cycles (CLAUDE.md §6.2 / §1.5), then one batched question to the owner. A failure that is not a code fault you can fix (CI quota, an outage, a missing secret) is reported to the owner and left to them — never worked around by editing or disabling the check.
-- **"Not yet"**: re-running the **same** `merge` command is allowed only for `mergeable still UNKNOWN` (once) and `checks still running` (later, when they have finished; no polling loop).
+- **"Not yet"**: re-running the **same** `merge` command is allowed only for `mergeable still UNKNOWN` (once), `checks still running` and `no checks are registered on this head yet` (both later, when the checks have appeared and finished; no polling loop).
+- **`VERDICT: UNKNOWN`** (the merge command was started but did not report back, e.g. a timeout): the PR may or may not be merged. Look at its state first (`gh pr view <PR#> --repo <repo> --json state,mergeCommit`); do not run `merge` again blindly. Merged → continue as under "Merged". Not merged → report it to the owner with the PR URL.
 
 No other route, ever: not `gh pr merge`, not `gh api`, not the app's PR tools.
 

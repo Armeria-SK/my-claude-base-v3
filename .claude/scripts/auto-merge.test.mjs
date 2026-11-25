@@ -54,6 +54,41 @@ test('an unknown subcommand is a usage error and touches nothing', () => {
   assert.ok(!fs.existsSync(modeFile));
 });
 
+test('status / off with anything extra is a usage error and touches nothing', () => {
+  fs.writeFileSync(modeFile, '{"enabled":true}\n');
+  try {
+    for (const args of [['off', 'extra'], ['off', '--force'], ['status', 'x'], ['status', 'off'], ['off', '']]) {
+      const r = run(...args);
+      assert.strictEqual(r.status, 2, args.join(' '));
+      assert.match(r.stderr, /takes no further arguments/);
+      assert.strictEqual(r.stdout, '');
+      assert.ok(fs.existsSync(modeFile), 'the switch file must still be there');
+    }
+  } finally {
+    fs.rmSync(modeFile, { force: true });
+  }
+});
+
+test('status / off print the root they acted on, and say so when it is not the script\'s own workspace', () => {
+  const own = path.resolve(path.dirname(SCRIPT), '..', '..').split(path.sep).join('/');
+  const shown = root.split(path.sep).join('/');
+  fs.writeFileSync(modeFile, '{"enabled":true}\n');
+  const s = run('status');
+  assert.ok(s.stdout.includes(`\nroot: ${shown}\n`), s.stdout);
+  assert.ok(s.stdout.includes(`NOTE: that root is the folder CLAUDE_PROJECT_DIR names, not this script's own workspace (${own}). The switch of ${own} was not read;`), s.stdout);
+  const o = run('off');
+  assert.ok(o.stdout.includes(`\nroot: ${shown}\n`), o.stdout);
+  assert.ok(o.stdout.includes(`The switch of ${own} was not touched; check / merge only ever use that one.`), o.stdout);
+  for (const env of [{ CLAUDE_PROJECT_DIR: own }, { CLAUDE_PROJECT_DIR: path.join(own, '.claude', '..') }, {}]) {
+    const full = { ...process.env, ...env };
+    if (!('CLAUDE_PROJECT_DIR' in env)) delete full.CLAUDE_PROJECT_DIR;
+    const r = spawnSync(process.execPath, [SCRIPT, 'status'], { env: full, encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /^root: /m);
+    assert.doesNotMatch(r.stdout, /NOTE:/, 'no note when the root is the script\'s own workspace');
+  }
+});
+
 // ---- check / merge: refusals that end before GitHub is asked.
 // check / merge take the root from the script's own location, so each fixture workspace gets its own copy
 // of the script and the lib (same relative layout). No fixture passes the local identity checks, except
