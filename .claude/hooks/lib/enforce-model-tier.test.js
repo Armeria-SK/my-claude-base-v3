@@ -108,8 +108,8 @@ const modeRoot = (modeJson) => {
   const r = fs.mkdtempSync(path.join(os.tmpdir(), 'tier-mode-'));
   after(() => fs.rmSync(r, { recursive: true, force: true }));
   fs.mkdirSync(path.join(r, '.claude', 'agents'), { recursive: true });
-  for (const [name, effort] of [['planner', 'medium'], ['executor', 'medium'], ['reviewer', 'xhigh'], ['reviewer-deep', 'max'], ['debugger', 'medium']]) {
-    fs.writeFileSync(path.join(r, '.claude', 'agents', `${name}.md`), `---\nname: ${name}\nmodel: opus\neffort: ${effort}\n---\nbody\n`);
+  for (const [name, model, effort] of [['planner', 'opus', 'medium'], ['executor', 'sonnet', 'xhigh'], ['reviewer', 'opus', 'xhigh'], ['reviewer-deep', 'opus', 'max'], ['debugger', 'opus', 'medium']]) {
+    fs.writeFileSync(path.join(r, '.claude', 'agents', `${name}.md`), `---\nname: ${name}\nmodel: ${model}\neffort: ${effort}\n---\nbody\n`);
   }
   if (modeJson != null) fs.writeFileSync(path.join(r, '.claude', 'fable-mode.json'), modeJson);
   return r;
@@ -134,13 +134,20 @@ const modeCases = [
   ['mode on: listed agent, fable without effort', onRoot, { subagent_type: 'executor', model: 'fable' }, 2, /effort "low"/],
   ['mode on: listed agent, fable at another effort', onRoot, { subagent_type: 'executor', model: 'fable', effort: 'medium' }, 2],
   ['mode on: opus fallback at the agent\'s own effort', onRoot, { subagent_type: 'reviewer', model: 'opus', effort: 'xhigh' }, 0],
-  ['mode on: opus fallback with no effort', onRoot, { subagent_type: 'executor', model: 'opus' }, 0],
-  ['mode on: opus at a different effort', onRoot, { subagent_type: 'executor', model: 'opus', effort: 'low' }, 2],
-  ['mode on: listed agent on sonnet', onRoot, { subagent_type: 'executor', model: 'sonnet', effort: 'low' }, 2],
+  ['mode on: opus fallback with no effort', onRoot, { subagent_type: 'reviewer', model: 'opus' }, 0],
+  ['mode on: opus at a different effort', onRoot, { subagent_type: 'reviewer', model: 'opus', effort: 'low' }, 2],
+  ['mode on: sonnet agent, fallback on its own model at its own effort', onRoot, { subagent_type: 'executor', model: 'sonnet', effort: 'xhigh' }, 0],
+  ['mode on: sonnet agent, fallback on its own model with no effort', onRoot, { subagent_type: 'executor', model: 'sonnet' }, 0],
+  ['mode on: sonnet agent, opus is not its fallback', onRoot, { subagent_type: 'executor', model: 'opus', effort: 'xhigh' }, 2, /pinned to sonnet/],
+  ['mode on: sonnet agent, opus at the old executor effort', onRoot, { subagent_type: 'executor', model: 'opus', effort: 'medium' }, 2],
+  ['mode on: listed agent on sonnet at another effort', onRoot, { subagent_type: 'executor', model: 'sonnet', effort: 'low' }, 2],
   ['mode on: unlisted agent with no model', onRoot, { subagent_type: 'planner' }, 0],
   ['mode on: unlisted agent on fable', onRoot, { subagent_type: 'debugger', model: 'fable', effort: 'low' }, 2],
   ['mode on: built-in agent untouched', onRoot, { subagent_type: 'general-purpose' }, 0],
   ['mode off: no model allowed', offRoot, { subagent_type: 'executor' }, 0],
+  ['mode off: sonnet agent, its own model and effort', offRoot, { subagent_type: 'executor', model: 'sonnet', effort: 'xhigh' }, 0],
+  ['mode off: sonnet agent sent to opus', offRoot, { subagent_type: 'executor', model: 'opus' }, 2],
+  ['mode off: sonnet agent at another effort', offRoot, { subagent_type: 'executor', effort: 'medium' }, 2],
   ['mode off: fable denied', offRoot, { subagent_type: 'executor', model: 'fable', effort: 'low' }, 2],
 ];
 for (const [name, r, input, exit, re] of modeCases) {
@@ -176,17 +183,17 @@ test('a deeply nested mode file never crashes the hook: today\'s rules still den
   const deep = '['.repeat(10000) + ']'.repeat(10000);
   for (const json of [`{"executor":{"model":${deep},"effort":"low"}}`, `{"executor":{"model":"fable","effort":${deep}}}`]) {
     const r = modeRoot(json);
-    const v = verdictIn(r, { subagent_type: 'executor', model: 'sonnet', prompt: 'x' });
+    const v = verdictIn(r, { subagent_type: 'executor', model: 'opus', prompt: 'x' });
     assert.strictEqual(v.exit, 2, v.stderr);
     assert.match(v.stderr, /BLOCKED[\s\S]*Fable mode is OFF/);
     assert.strictEqual(verdictIn(r, { subagent_type: 'executor', effort: 'max', prompt: 'x' }).exit, 2);
   }
 });
 
-test('mode on: the no-model deny offers opus only as the post-usage-limit re-run', () => {
+test('mode on: the no-model deny offers the agent\'s own model only as the post-usage-limit re-run', () => {
   const v = verdictIn(onRoot, { subagent_type: 'executor', prompt: 'x' });
-  assert.match(v.stderr, /model: "opus" at its own effort is only for re-running after a Fable run ended on a usage-limit error/);
-  assert.doesNotMatch(v.stderr, /\(or model: "opus"/);
+  assert.match(v.stderr, /Its own frontmatter model at its own effort is only for re-running after a Fable run ended on a usage-limit error/);
+  assert.doesNotMatch(v.stderr, /model: "opus"/);
 });
 
 test('deeply nested payload values cannot make the hook fail open', () => {

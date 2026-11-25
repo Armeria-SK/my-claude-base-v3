@@ -19,7 +19,7 @@ Writer and judge are different instances in independent contexts. The judge is O
 
 | Role | Agent | Model / effort |
 |---|---|---|
-| Worker | code = `executor` (or `debugger`); plan = `planner` | opus medium |
+| Worker | code = `executor` (or `debugger`); plan = `planner` | sonnet xhigh (`debugger`, `planner`: opus medium) |
 | Judge, first pass | code = `reviewer`; plan = `planner` (Self-Review Mode) | opus xhigh / opus medium |
 | Judge, confirming pass | `reviewer-deep` / `planner-deep` | opus max / opus xhigh |
 | Evidence check | `verifier` (after APPROVE, code only) | opus medium |
@@ -65,7 +65,7 @@ A resumed worker has already handed back once, and its second handback may not a
 A `Probe request:` in a finding goes to the worker as a test: written first and shown failing on the current version, then passing after the fix; the worker reports both runs.
 
 ### Usage-limit fallback
-If an agent running on Fable (Fable mode, or an agent file set to Fable) dies on a billing / credit / rate-limit error, restart that role on Opus per CLAUDE.md §2: a fresh dispatch, not a fix-back, and say so in the report.
+If an agent running on Fable (Fable mode, or an agent file set to Fable) dies on a billing / credit / rate-limit error, restart that role per CLAUDE.md §2 (Fable mode: on its normal model and effort; an agent file set to Fable: on Opus): a fresh dispatch, not a fix-back, and say so in the report.
 
 ## Cycle-3 carryover
 If cycle 3 still ends in REQUEST_CHANGES, stop looping. Report to the user: what was fixed, what remains (finding, severity, file:line, why it did not converge), and your recommendation. The verifier still runs on the current state so the report says exactly what is proven.

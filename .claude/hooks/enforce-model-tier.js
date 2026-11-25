@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // PreToolUse hook (Task|Agent): keep every dispatch on the model tier and effort its agent file declares.
 //
-// The tier is written once, in each agent's frontmatter `model:` (opus / haiku, or fable) and `effort:`.
+// The tier is written once, in each agent's frontmatter `model:` (opus / sonnet / haiku, or fable) and `effort:`.
 // A per-dispatch `model` or `effort` parameter beats frontmatter, so those are the ways a tier can be
 // silently bypassed — e.g. sending `reviewer` (opus) to sonnet, `explorer` (haiku) to opus, or
 // `reviewer` at effort max.
@@ -16,7 +16,8 @@
 // A missing or different effort is denied, as is every other family pair.
 // Fable mode (.claude/fable-mode.json, CLAUDE.md §2): an agent listed there must be dispatched with
 // model "fable" and its listed effort; no model at all is denied so the mode cannot be skipped. An
-// explicit opus at the agent's own effort stays allowed (the fallback while the mode is on). A
+// explicit model of the agent's own frontmatter family at its own effort stays allowed (the fallback
+// while the mode is on). A
 // malformed mode file counts as off and its problem is appended to any deny message.
 // Allows everything else: no `model` / `effort` given, same family and same effort, built-in agent
 // types without a definition in .claude/agents/ (nothing to compare against).
@@ -98,7 +99,7 @@ function decide(input, cwd) {
   if (mapped && !input.model) {
     deny(
       `BLOCKED: FABLE MODE is on and lists "${input.subagent_type}"; dispatch it with model: "fable", effort: "${mapped}" ` +
-      '(/fable off to stop). model: "opus" at its own effort is only for re-running after a Fable run ended on a usage-limit error. CLAUDE.md §2.'
+      '(/fable off to stop). Its own frontmatter model at its own effort is only for re-running after a Fable run ended on a usage-limit error. CLAUDE.md §2.'
     );
   }
   if (mapped && requested === 'fable') {
