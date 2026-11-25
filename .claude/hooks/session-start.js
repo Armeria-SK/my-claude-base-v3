@@ -103,8 +103,8 @@ function fableLine(root) {
   }
   return (
     (mode.error ? `WARNING: ${mode.error}; the file is ignored (mode treated as OFF) until fixed or removed (/fable off).\n` : '') +
-    `FABLE MODE: OFF — ${AGENTS.join(', ')} run on their normal Opus settings (the owner types /fable on to switch).\n` +
-    ask('stay on the normal Opus roster, or turn Fable mode on', 'on')
+    `FABLE MODE: OFF — ${AGENTS.join(', ')} run on their normal settings (the owner types /fable on to switch).\n` +
+    ask('stay on the normal roster, or turn Fable mode on', 'on')
   );
 }
 

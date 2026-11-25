@@ -207,7 +207,7 @@ const toggleCmd = (arg) => `node "${path.join(roots[roots.length - 1], '.claude'
 test('Fable mode OFF: the state and the once-per-session question are injected', () => {
   const block = fableBlock(inject({}));
   assert.match(block, /^FABLE MODE: OFF — planner, executor, reviewer, planner-deep, reviewer-deep/);
-  assert.match(block, /ask the owner once in plain Japanese via AskUserQuestion: stay on the normal Opus roster, or turn Fable mode on/);
+  assert.match(block, /ask the owner once in plain Japanese via AskUserQuestion: stay on the normal roster, or turn Fable mode on/);
   assert.ok(!block.includes(toggleCmd('on')), 'the conductor must never be told to run on itself');
   assert.match(block, /ask them to type `\/fable on` in the prompt box themselves \(agents cannot turn it on/);
   assert.match(block, /the owner types \/fable on to switch/);

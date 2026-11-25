@@ -11,7 +11,7 @@ disable-model-invocation: true
 ```
 /fable            # 今の状態を表示（/fable status と同じ）
 /fable on         # Fable モードを入れる（オーナーが自分で打ったときだけ効く）
-/fable off        # Fable モードを切る（通常の Opus の割り当てに戻す）
+/fable off        # Fable モードを切る（通常の割り当てに戻す）
 ```
 
 ## Process
@@ -28,11 +28,11 @@ disable-model-invocation: true
 
 ## オンの間の呼び出し方
 - 対象エージェントは `model: "fable"` と割り当ての `effort` を付けて呼ぶ。`model` を付けずに呼ぶと `enforce-model-tier.js` が止める。
-- Fable で動かした回が利用上限（クレジット不足・レート制限）で止まったときに限り、`model: "opus"` をそのエージェント本来の effort（または effort なし）で付けて出し直す。
+- Fable で動かした回が利用上限（クレジット不足・レート制限）で止まったときに限り、そのエージェント本来のモデル（定義ファイルの `model:`。executor は `"sonnet"`、ほかは `"opus"`）を本来の effort（または effort なし）で付けて出し直す。
 
 ## 新しいセッションでの確認
 モードがオンでもオフでも、新しいセッションで対象エージェント（planner / executor / reviewer / planner-deep / reviewer-deep）を初めて呼ぶ前に、AskUserQuestion で 1 回だけ平易な日本語で聞く。
 - オンのとき: 「Fable モードのまま続けるか、切るか」→ 切るなら SessionStart が示した `node "<ルート>/.claude/scripts/fable-mode.mjs" off`
-- オフのとき: 「通常の Opus のままにするか、Fable モードを入れるか」→ 入れるなら、オーナーに入力欄へ `/fable on` と打ってもらう（自分では入れられない）
+- オフのとき: 「通常の割り当てのままにするか、Fable モードを入れるか」→ 入れるなら、オーナーに入力欄へ `/fable on` と打ってもらう（自分では入れられない）
 
 対象エージェントを呼ばないセッションでは聞かなくてよい。SessionStart フックがこの指示を毎回コンテキストに入れる。

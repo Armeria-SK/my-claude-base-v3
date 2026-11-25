@@ -18,7 +18,7 @@ const fail = (where, msg) => findings.push(`${where}: ${msg}`);
 const TIERS = {
   planner: { model: "opus", effort: "medium", twin: "planner-deep" },
   reviewer: { model: "opus", effort: "xhigh", twin: "reviewer-deep" },
-  executor: { model: "opus", effort: "medium" },
+  executor: { model: "sonnet", effort: "xhigh" },
   "planner-deep": { model: "opus", effort: "xhigh" },
   "reviewer-deep": { model: "opus", effort: "max" },
   debugger: { model: "opus", effort: "medium" },
