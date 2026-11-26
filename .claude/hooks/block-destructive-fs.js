@@ -386,6 +386,32 @@ function psDeleteTargets(args, rawArgs) {
   return targets;
 }
 
+// --- Denial-message hints: text only, no verdict depends on them ----------------------------------
+
+// The hint functions read only `root`, never the payload's cwd or the command's targets: this hook has no try/catch,
+// and Claude Code treats an exit 1 (an uncaught throw) as non-blocking, so code added here must not be able to throw.
+
+// The workspace root as a copyable example path, or a placeholder when the root is not plain path text (a space
+// cannot be written plainly: a quoted PowerShell path with a space never gets the tmp/ exemption).
+function hintRoot(root) {
+  return PS_PLAIN_PATH.test(root) ? root : '<workspace-root>';
+}
+
+const HINT_OWNER =
+  "Anything else (outside the workspace, plans/, tasks/, dev/<product>/ other than its tmp/, or the user's data) still needs the owner.";
+
+// Appended to the find / xargs denials: the rm form that the rm containment rule allows.
+function rmHint(root) {
+  const example = `rm -rf ${hintRoot(root).replace(/\\/g, '/')}/tmp/<topic>`;
+  return ` Hint: to delete a folder you created under the workspace tmp/, name it by one full path with no find/xargs, wildcard or variable, e.g. ${example} (replace <topic>). ${HINT_OWNER}`;
+}
+
+// Appended to the PowerShell delete denials: the form the tmp/ exemption allows.
+function psHint(root) {
+  const example = `Remove-Item -Recurse -Force ${[hintRoot(root), 'tmp', '<topic>'].join(path.sep)}`;
+  return ` Hint: a folder you created under the workspace tmp/ is removed without asking when it is named by one full literal path (no $variable, wildcard, pipe, or Set-Location/cd in the command), e.g. ${example} (replace <topic>). ${HINT_OWNER}`;
+}
+
 let data = '';
 process.stdin.on('data', (c) => (data += c));
 process.stdin.on('end', () => {
@@ -420,14 +446,14 @@ function checkCommand(command, cwd, root, msys) {
     // --- find ... -delete ---------------------------------------------------
     if (cmd === 'find') {
       if (args.includes('-delete')) {
-        return `BLOCKED: "find ... -delete" is forbidden. File deletion requires user confirmation (CLAUDE.md §1.5).`;
+        return `BLOCKED: "find ... -delete" is forbidden. File deletion requires user confirmation (CLAUDE.md §1.5).${rmHint(root)}`;
       }
       // --- find ... -exec/-execdir/-ok rm|shred ... {} ; / + ---------------
       for (let i = 0; i < args.length; i++) {
         if (args[i] === '-exec' || args[i] === '-execdir' || args[i] === '-ok') {
           const invoked = stripExeSuffix((args[i + 1] || '').split('/').pop().toLowerCase());
           if (DESTRUCTIVE_CMDS.has(invoked)) {
-            return `BLOCKED: "find ... ${args[i]} ${invoked} ..." is forbidden. File deletion requires user confirmation (CLAUDE.md §1.5).`;
+            return `BLOCKED: "find ... ${args[i]} ${invoked} ..." is forbidden. File deletion requires user confirmation (CLAUDE.md §1.5).${rmHint(root)}`;
           }
           // Shell-wrapper-mediated delete: find ... -exec sh -c 'rm -rf $1' _ {} ;
           // Scan only up to the -exec/-execdir/-ok terminator (';' or '+') so unrelated
@@ -435,7 +461,7 @@ function checkCommand(command, cwd, root, msys) {
           let end = i + 2;
           while (end < args.length && args[end] !== ';' && args[end] !== '+') end++;
           if (isWrapperMediatedDelete(invoked, args.slice(i + 2, end))) {
-            return `BLOCKED: "find ... ${args[i]} ${invoked} ..." (shell-wrapper-mediated delete) is forbidden. File deletion requires user confirmation (CLAUDE.md §1.5).`;
+            return `BLOCKED: "find ... ${args[i]} ${invoked} ..." (shell-wrapper-mediated delete) is forbidden. File deletion requires user confirmation (CLAUDE.md §1.5).${rmHint(root)}`;
           }
         }
       }
@@ -457,13 +483,13 @@ function checkCommand(command, cwd, root, msys) {
         const invokedFlags = invokedArgs.filter((t) => t.startsWith('-'));
         const recursiveOrForce = invokedFlags.some((f) => /^-[a-zA-Z]*[rRf]/.test(f)) || invokedFlags.includes('--recursive') || invokedFlags.includes('--force');
         if (recursiveOrForce) {
-          return `BLOCKED: "xargs ... ${invoked}" with a recursive/force flag is forbidden (${raw}). Targets come from stdin and can't be safety-checked. File deletion requires user confirmation (CLAUDE.md §1.5).`;
+          return `BLOCKED: "xargs ... ${invoked}" with a recursive/force flag is forbidden (${raw}). Targets come from stdin and can't be safety-checked. File deletion requires user confirmation (CLAUDE.md §1.5).${rmHint(root)}`;
         }
       }
       // Shell-wrapper-mediated delete: xargs sh -c 'rm -rf x' / xargs env rm -rf x
       // Everything after the invoked wrapper is fair game (no find-style terminator for xargs).
       if (isWrapperMediatedDelete(invoked, args.slice(i + 1))) {
-        return `BLOCKED: "xargs ... ${invoked}" (shell-wrapper-mediated delete) is forbidden (${raw}). Targets come from stdin and can't be safety-checked. File deletion requires user confirmation (CLAUDE.md §1.5).`;
+        return `BLOCKED: "xargs ... ${invoked}" (shell-wrapper-mediated delete) is forbidden (${raw}). Targets come from stdin and can't be safety-checked. File deletion requires user confirmation (CLAUDE.md §1.5).${rmHint(root)}`;
       }
     }
 
@@ -501,7 +527,7 @@ function checkCommand(command, cwd, root, msys) {
         if (psInTmp.has(x)) continue;
         const unquoted = x.value.replace(/^["']|["']$/g, '').replace(/\\/g, '/');
         if (FORBIDDEN_TARGET.test(unquoted)) {
-          return `BLOCKED: "${cmd}" targeting "${unquoted}" is forbidden (root/home/parent/absolute path). Confirm with user before proceeding.`;
+          return `BLOCKED: "${cmd}" targeting "${unquoted}" is forbidden (root/home/parent/absolute path). Confirm with user before proceeding.${psHint(root)}`;
         }
       }
       if (psRecursive) {
@@ -515,7 +541,7 @@ function checkCommand(command, cwd, root, msys) {
           });
         if (!allSafe) {
           const why = moved ? ' The command contains a location change (Set-Location/cd/Push-Location), so relative targets cannot be resolved.' : '';
-          return `BLOCKED: Recursive delete detected (${raw}).${why} File deletion requires user confirmation (CLAUDE.md §1.5). Only disposable build dirs (node_modules, dist, ...) may be removed without asking.`;
+          return `BLOCKED: Recursive delete detected (${raw}).${why} File deletion requires user confirmation (CLAUDE.md §1.5). Only disposable build dirs (node_modules, dist, ...) may be removed without asking.${psHint(root)}`;
         }
       }
     }
