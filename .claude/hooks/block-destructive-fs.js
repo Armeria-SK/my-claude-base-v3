@@ -406,6 +406,17 @@ function psHint(root) {
   return ` Hint: a folder under the workspace tmp/ is removed without asking when it is named by one full literal path (no $variable, wildcard, pipe, or Set-Location/cd in the command), e.g. ${example} (replace <topic>). Deleting outside the workspace, or the user's data, still needs the owner.`;
 }
 
+// True when a PowerShell delete target that was denied as "forbidden" lies inside tmp/ and differs from plain path
+// text at most by wildcard / $ characters: only then does naming that place as one plain full path (psHint) pass.
+// Resolves like isPsTmpTarget, without its form checks. A target outside the workspace, elsewhere in the workspace
+// or with a space / non-ASCII / `:` in its name has no allowed rewrite, so it gets no hint.
+function psTargetHasTmpRewrite(root, cwd, target) {
+  if (!PS_PLAIN_PATH.test(target.replace(/[*?[\]$]/g, 'x'))) return false;
+  const abs = path.resolve(cwd, target);
+  const { rel, outside } = normalizeRel(foldCase(root), foldCase(abs));
+  return !outside && PS_TMP_REL.test(rel);
+}
+
 let data = '';
 process.stdin.on('data', (c) => (data += c));
 process.stdin.on('end', () => {
@@ -521,7 +532,7 @@ function checkCommand(command, cwd, root, msys) {
         if (psInTmp.has(x)) continue;
         const unquoted = x.value.replace(/^["']|["']$/g, '').replace(/\\/g, '/');
         if (FORBIDDEN_TARGET.test(unquoted)) {
-          return `BLOCKED: "${cmd}" targeting "${unquoted}" is forbidden (root/home/parent/absolute path). Confirm with user before proceeding.`;
+          return `BLOCKED: "${cmd}" targeting "${unquoted}" is forbidden (root/home/parent/absolute path). Confirm with user before proceeding.${psTargetHasTmpRewrite(root, cwd, unquoted) ? psHint(root) : ''}`;
         }
       }
       if (psRecursive) {

@@ -142,3 +142,76 @@ for (const [name, tool, command] of UNCHANGED) {
     assert.ok(!stderr.includes('Hint:'), stderr);
   });
 }
+
+// --- PowerShell delete denied as `targeting "<path>" is forbidden (root/home/parent/absolute path)` ------------
+// The hint is added only when the target lies inside tmp/ and differs from plain path text at most by wildcard / $
+// characters (the same place written as a plain full path passes). Everywhere else the message stays as it was.
+const SEP = path.sep;
+const fwd = (p) => p.replace(/\\/g, '/');
+const forbiddenMsg = (cmd, target) =>
+  `BLOCKED: "${cmd}" targeting "${fwd(target)}" is forbidden (root/home/parent/absolute path). Confirm with user before proceeding.`;
+const TMP = path.join(ROOT, 'tmp');
+const T = path.join(ROOT, 'tmp', 'hint-probe');
+const PRODUCT_TMP_X = path.join(ROOT, 'dev', 'hint-product', 'tmp', 'x');
+
+// `target` is the path as the message prints it (before slash conversion); `allowedForm` is the same command
+// without the part that made it a denial, which the hook allows.
+const FORBIDDEN_WITH_HINT = [
+  { name: 'after a location change, absolute path', command: `Set-Location ..; Remove-Item ${fwd(T)}`, target: fwd(T), allowedForm: `Remove-Item ${fwd(T)}` },
+  { name: 'after a location change, recursive', command: `Set-Location ..; Remove-Item -Recurse -Force ${T}`, target: T, allowedForm: `Remove-Item -Recurse -Force ${T}` },
+  { name: 'after a location change, the tmp directory itself', command: `Set-Location ..; Remove-Item -Recurse -Force ${TMP}`, target: TMP, allowedForm: `Remove-Item -Recurse -Force ${TMP}` },
+  { name: 'after a location change, a product tmp/', command: `Set-Location ..; Remove-Item ${PRODUCT_TMP_X}`, target: PRODUCT_TMP_X, allowedForm: `Remove-Item ${PRODUCT_TMP_X}` },
+  { name: 'after a location change, -LiteralPath:', command: `Set-Location ..; Remove-Item -Recurse -Force -LiteralPath:${T}`, target: T, allowedForm: `Remove-Item -Recurse -Force -LiteralPath:${T}` },
+  { name: 'wildcard in tmp/', command: `Remove-Item -Recurse -Force ${TMP}${SEP}*`, target: `${TMP}${SEP}*` },
+  { name: '$ in tmp/', command: `Remove-Item -Recurse -Force ${TMP}${SEP}$x`, target: `${TMP}${SEP}$x` },
+  { name: 'glued word in tmp/', command: `Remove-Item -Recurse -Force "${T}"y${SEP}..${SEP}..${SEP}..${SEP}node_modules`, target: T },
+];
+
+for (const c of FORBIDDEN_WITH_HINT) {
+  test(`forbidden target, ${c.name}: still denied, old text intact, hint appended`, { skip: SKIP_UNPLAIN }, () => {
+    const { exit, stderr } = run('PowerShell', c.command);
+    assert.strictEqual(exit, 2, stderr);
+    assert.ok(stderr.startsWith(forbiddenMsg('remove-item', c.target) + HINT_START.ps), stderr);
+    assert.ok(stderr.endsWith(NEEDS_OWNER), stderr);
+  });
+
+  test(`forbidden target, ${c.name}: the example in the hint is allowed once <topic> is filled in`, { skip: SKIP_UNPLAIN }, () => {
+    const m = EXAMPLE.exec(run('PowerShell', c.command).stderr);
+    assert.ok(m, 'no example in the message');
+    const rewrite = m[1].replace('<topic>', 'hint-probe-topic');
+    const verdict = run('PowerShell', rewrite);
+    assert.strictEqual(verdict.exit, 0, `${rewrite} -> ${verdict.stderr}`);
+  });
+
+  if (c.allowedForm) {
+    test(`forbidden target, ${c.name}: the same command without the location change is allowed`, { skip: SKIP_UNPLAIN }, () => {
+      const verdict = run('PowerShell', c.allowedForm);
+      assert.strictEqual(verdict.exit, 0, `${c.allowedForm} -> ${verdict.stderr}`);
+    });
+  }
+}
+
+// No allowed rewrite exists for these (outside the workspace, elsewhere in it, unresolvable, or a name with a
+// character that cannot be written plainly): denied exactly as before, no hint.
+const FORBIDDEN_NO_HINT = [
+  ['absolute path outside the workspace', `Remove-Item C:\\Users\\hint-probe\\a.txt`, 'remove-item', 'C:\\Users\\hint-probe\\a.txt'],
+  ['sibling of the workspace root', `Remove-Item -Recurse -Force ${ROOT}-other${SEP}tmp${SEP}x`, 'remove-item', `${ROOT}-other${SEP}tmp${SEP}x`],
+  ['elsewhere in the workspace, file', `Remove-Item ${path.join(ROOT, 'plans', 'a.txt')}`, 'remove-item', path.join(ROOT, 'plans', 'a.txt')],
+  ['elsewhere in the workspace, recursive', `Remove-Item -Recurse -Force ${path.join(ROOT, 'plans', 'x')}`, 'remove-item', path.join(ROOT, 'plans', 'x')],
+  ['the workspace root itself', `Remove-Item -Recurse -Force ${ROOT}`, 'remove-item', ROOT],
+  ['a path that leaves tmp/ through ..', `Remove-Item -Recurse -Force ${TMP}${SEP}..${SEP}plans`, 'remove-item', `${TMP}${SEP}..${SEP}plans`],
+  ['a parent directory', `Remove-Item -Recurse -Force ..${SEP}hint-other`, 'remove-item', `..${SEP}hint-other`],
+  ['~', 'Remove-Item -Recurse -Force ~/hint-probe', 'remove-item', '~/hint-probe'],
+  ['$HOME', 'Remove-Item -Recurse -Force $HOME/hint-probe', 'remove-item', '$HOME/hint-probe'],
+  ['a bare wildcard', 'Remove-Item -Recurse -Force *', 'remove-item', '*'],
+  ['a non-ASCII name in tmp/', `Remove-Item -Recurse -Force ${TMP}${SEP}\u00e9`, 'remove-item', `${TMP}${SEP}\u00e9`],
+  ['a colon in a name in tmp/', `Remove-Item -Recurse -Force ${TMP}${SEP}a:b`, 'remove-item', `${TMP}${SEP}a:b`],
+  ['Clear-Content on a path in tmp/ (it has no tmp/ exemption)', `Clear-Content ${T}`, 'Clear-Content', T],
+];
+for (const [name, command, cmd, target] of FORBIDDEN_NO_HINT) {
+  test(`forbidden target, no hint: ${name}`, { skip: SKIP_UNPLAIN }, () => {
+    const { exit, stderr } = run('PowerShell', command);
+    assert.strictEqual(exit, 2, stderr);
+    assert.strictEqual(stderr, forbiddenMsg(cmd, target));
+  });
+}
