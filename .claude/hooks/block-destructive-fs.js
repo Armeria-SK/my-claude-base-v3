@@ -388,33 +388,28 @@ function psDeleteTargets(args, rawArgs) {
 
 // --- Denial-message hints: text only, no verdict depends on them ----------------------------------
 
-// The workspace root as a copyable example path, or a placeholder when the root is not plain path text
-// (a space would need quoting, which the examples below do not show).
+// The hint functions read only `root`, never the payload's cwd or the command's targets: this hook has no try/catch,
+// and Claude Code treats an exit 1 (an uncaught throw) as non-blocking, so code added here must not be able to throw.
+
+// The workspace root as a copyable example path, or a placeholder when the root is not plain path text (a space
+// cannot be written plainly: a quoted PowerShell path with a space never gets the tmp/ exemption).
 function hintRoot(root) {
   return PS_PLAIN_PATH.test(root) ? root : '<workspace-root>';
 }
 
+const HINT_OWNER =
+  "Anything else (outside the workspace, plans/, tasks/, dev/<product>/ other than its tmp/, or the user's data) still needs the owner.";
+
 // Appended to the find / xargs denials: the rm form that the rm containment rule allows.
 function rmHint(root) {
   const example = `rm -rf ${hintRoot(root).replace(/\\/g, '/')}/tmp/<topic>`;
-  return ` Hint: to delete a folder inside the workspace, name it by one full path with no find/xargs, wildcard or variable, e.g. ${example} (replace <topic>). Deleting outside the workspace, or the user's data, still needs the owner.`;
+  return ` Hint: to delete a folder you created under the workspace tmp/, name it by one full path with no find/xargs, wildcard or variable, e.g. ${example} (replace <topic>). ${HINT_OWNER}`;
 }
 
-// Appended to the PowerShell recursive-delete denial: the form the tmp/ exemption allows.
+// Appended to the PowerShell delete denials: the form the tmp/ exemption allows.
 function psHint(root) {
   const example = `Remove-Item -Recurse -Force ${[hintRoot(root), 'tmp', '<topic>'].join(path.sep)}`;
-  return ` Hint: a folder under the workspace tmp/ is removed without asking when it is named by one full literal path (no $variable, wildcard, pipe, or Set-Location/cd in the command), e.g. ${example} (replace <topic>). Deleting outside the workspace, or the user's data, still needs the owner.`;
-}
-
-// True when a PowerShell delete target that was denied as "forbidden" lies inside tmp/ and differs from plain path
-// text at most by wildcard / $ characters: only then does naming that place as one plain full path (psHint) pass.
-// Resolves like isPsTmpTarget, without its form checks. A target outside the workspace, elsewhere in the workspace
-// or with a space / non-ASCII / `:` in its name has no allowed rewrite, so it gets no hint.
-function psTargetHasTmpRewrite(root, cwd, target) {
-  if (!PS_PLAIN_PATH.test(target.replace(/[*?[\]$]/g, 'x'))) return false;
-  const abs = path.resolve(cwd, target);
-  const { rel, outside } = normalizeRel(foldCase(root), foldCase(abs));
-  return !outside && PS_TMP_REL.test(rel);
+  return ` Hint: a folder you created under the workspace tmp/ is removed without asking when it is named by one full literal path (no $variable, wildcard, pipe, or Set-Location/cd in the command), e.g. ${example} (replace <topic>). ${HINT_OWNER}`;
 }
 
 let data = '';
@@ -532,7 +527,7 @@ function checkCommand(command, cwd, root, msys) {
         if (psInTmp.has(x)) continue;
         const unquoted = x.value.replace(/^["']|["']$/g, '').replace(/\\/g, '/');
         if (FORBIDDEN_TARGET.test(unquoted)) {
-          return `BLOCKED: "${cmd}" targeting "${unquoted}" is forbidden (root/home/parent/absolute path). Confirm with user before proceeding.${psTargetHasTmpRewrite(root, cwd, unquoted) ? psHint(root) : ''}`;
+          return `BLOCKED: "${cmd}" targeting "${unquoted}" is forbidden (root/home/parent/absolute path). Confirm with user before proceeding.${psHint(root)}`;
         }
       }
       if (psRecursive) {

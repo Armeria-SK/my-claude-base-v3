@@ -1,8 +1,8 @@
 // Denial-message hints of block-destructive-fs.js (owner ruling 2026-11-26: message text only, verdicts unchanged).
 //   node --test .claude/hooks/lib/block-destructive-fs.test.js
 // The denials of delete commands that would have been allowed if written differently (PowerShell recursive delete
-// after a location change / with a variable target / fed by a pipe; find -delete / -exec rm; xargs rm) keep their
-// old text and end with a hint holding an example. Each test feeds the hook a payload and checks that the denial
+// after a location change / with a variable target / fed by a pipe / a forbidden target; find -delete / -exec rm;
+// xargs rm) keep their old text and end with a hint holding an example. Each test feeds the hook a payload and checks that the denial
 // still denies, that the old text is intact, that the hint is there, and that the example in the hint, with <topic>
 // filled in, is itself allowed by the hook. Verdicts of the other branches stay pinned by hook-probes.samples.json.
 // The hook only reads the command string, so the checkout itself is the workspace root here and nothing is deleted.
@@ -18,8 +18,8 @@ const HOOK = path.join(ROOT, '.claude', 'hooks', 'block-destructive-fs.js');
 const PLAIN_ROOT = /^(?:[A-Za-z]:[\\/])?[\w.\-\\/]+$/.test(ROOT);
 const SKIP_UNPLAIN = PLAIN_ROOT ? false : 'checkout path is not plain path text, so the hint shows a placeholder root';
 
-function run(tool, command) {
-  const payload = { tool_name: tool, cwd: ROOT, tool_input: { command } };
+function run(tool, command, cwd = ROOT) {
+  const payload = { tool_name: tool, cwd, tool_input: { command } };
   try {
     execFileSync(process.execPath, [HOOK], {
       input: JSON.stringify(payload), env: { ...process.env, CLAUDE_PROJECT_DIR: ROOT }, cwd: ROOT, stdio: 'pipe',
@@ -98,8 +98,13 @@ const CASES = [
   },
 ];
 
-const HINT_START = { ps: ' Hint: a folder under the workspace tmp/ is removed', rm: ' Hint: to delete a folder inside the workspace' };
-const NEEDS_OWNER = "Deleting outside the workspace, or the user's data, still needs the owner.";
+// The hint offers only what the owner asked for (tmp/ leftovers) and names what still needs the owner.
+const HINT_START = {
+  ps: ' Hint: a folder you created under the workspace tmp/ is removed',
+  rm: ' Hint: to delete a folder you created under the workspace tmp/',
+};
+const NEEDS_OWNER =
+  "Anything else (outside the workspace, plans/, tasks/, dev/<product>/ other than its tmp/, or the user's data) still needs the owner.";
 
 for (const c of CASES) {
   test(`${c.name}: still denied, old text intact, hint appended`, () => {
@@ -128,11 +133,20 @@ test('the PowerShell example is a plain absolute path under the workspace tmp/, 
   assert.strictEqual(rm, `rm -rf ${ROOT.replace(/\\/g, '/')}/tmp/<topic>`);
 });
 
+test('the hint offers tmp/ only: it never says "inside the workspace" and lists plans/, tasks/, dev/ as owner-only', () => {
+  for (const [tool, command] of [['Bash', "find plans -name '*.bak' -delete"], ['PowerShell', 'Get-ChildItem plans | Remove-Item -Recurse -Force']]) {
+    const { exit, stderr } = run(tool, command);
+    assert.strictEqual(exit, 2, stderr);
+    assert.ok(!stderr.includes('inside the workspace'), stderr);
+    for (const word of ['workspace tmp/', 'plans/', 'tasks/', 'dev/<product>/']) assert.ok(stderr.includes(word), `${word} missing in: ${stderr}`);
+  }
+});
+
 // Branches the hint does not belong to keep their old text: no hint on them.
 const UNCHANGED = [
   ['rm with a wildcard (Japanese message)', 'Bash', 'rm -rf tmp/hint-probe*'],
   ['rm with a variable (Japanese message)', 'Bash', 'rm -rf $ROOT/tmp/hint-probe'],
-  ['PowerShell delete of an absolute path outside the workspace', 'PowerShell', 'Remove-Item -Recurse -Force C:\\Users\\hint-probe'],
+  ['Clear-Content on a path in tmp/ (it has no tmp/ exemption)', 'PowerShell', `Clear-Content ${path.join(ROOT, 'tmp', 'hint-probe')}`],
   ['dd overwrite of an absolute path', 'Bash', 'dd if=/dev/null of=/etc/hint-probe'],
 ];
 for (const [name, tool, command] of UNCHANGED) {
@@ -144,8 +158,8 @@ for (const [name, tool, command] of UNCHANGED) {
 }
 
 // --- PowerShell delete denied as `targeting "<path>" is forbidden (root/home/parent/absolute path)` ------------
-// The hint is added only when the target lies inside tmp/ and differs from plain path text at most by wildcard / $
-// characters (the same place written as a plain full path passes). Everywhere else the message stays as it was.
+// Every such denial gets the same hint (it is a conditional sentence about tmp/, so it stays true when the target is
+// somewhere else); the old text stays the exact prefix.
 const SEP = path.sep;
 const fwd = (p) => p.replace(/\\/g, '/');
 const forbiddenMsg = (cmd, target) =>
@@ -191,27 +205,36 @@ for (const c of FORBIDDEN_WITH_HINT) {
   }
 }
 
-// No allowed rewrite exists for these (outside the workspace, elsewhere in it, unresolvable, or a name with a
-// character that cannot be written plainly): denied exactly as before, no hint.
-const FORBIDDEN_NO_HINT = [
-  ['absolute path outside the workspace', `Remove-Item C:\\Users\\hint-probe\\a.txt`, 'remove-item', 'C:\\Users\\hint-probe\\a.txt'],
-  ['sibling of the workspace root', `Remove-Item -Recurse -Force ${ROOT}-other${SEP}tmp${SEP}x`, 'remove-item', `${ROOT}-other${SEP}tmp${SEP}x`],
-  ['elsewhere in the workspace, file', `Remove-Item ${path.join(ROOT, 'plans', 'a.txt')}`, 'remove-item', path.join(ROOT, 'plans', 'a.txt')],
-  ['elsewhere in the workspace, recursive', `Remove-Item -Recurse -Force ${path.join(ROOT, 'plans', 'x')}`, 'remove-item', path.join(ROOT, 'plans', 'x')],
-  ['the workspace root itself', `Remove-Item -Recurse -Force ${ROOT}`, 'remove-item', ROOT],
-  ['a path that leaves tmp/ through ..', `Remove-Item -Recurse -Force ${TMP}${SEP}..${SEP}plans`, 'remove-item', `${TMP}${SEP}..${SEP}plans`],
-  ['a parent directory', `Remove-Item -Recurse -Force ..${SEP}hint-other`, 'remove-item', `..${SEP}hint-other`],
-  ['~', 'Remove-Item -Recurse -Force ~/hint-probe', 'remove-item', '~/hint-probe'],
-  ['$HOME', 'Remove-Item -Recurse -Force $HOME/hint-probe', 'remove-item', '$HOME/hint-probe'],
-  ['a bare wildcard', 'Remove-Item -Recurse -Force *', 'remove-item', '*'],
-  ['a non-ASCII name in tmp/', `Remove-Item -Recurse -Force ${TMP}${SEP}\u00e9`, 'remove-item', `${TMP}${SEP}\u00e9`],
-  ['a colon in a name in tmp/', `Remove-Item -Recurse -Force ${TMP}${SEP}a:b`, 'remove-item', `${TMP}${SEP}a:b`],
-  ['Clear-Content on a path in tmp/ (it has no tmp/ exemption)', `Clear-Content ${T}`, 'Clear-Content', T],
+// Targets with no allowed rewrite (outside the workspace, elsewhere in it, unresolvable): same denial, old text intact,
+// and the hint's last sentence says these still need the owner.
+const FORBIDDEN_OTHER = [
+  ['absolute path outside the workspace', `Remove-Item C:\\Users\\hint-probe\\a.txt`, 'C:\\Users\\hint-probe\\a.txt'],
+  ['elsewhere in the workspace', `Remove-Item -Recurse -Force ${path.join(ROOT, 'plans', 'x')}`, path.join(ROOT, 'plans', 'x')],
+  ['~', 'Remove-Item -Recurse -Force ~/hint-probe', '~/hint-probe'],
+  ['a bare wildcard', 'Remove-Item -Recurse -Force *', '*'],
 ];
-for (const [name, command, cmd, target] of FORBIDDEN_NO_HINT) {
-  test(`forbidden target, no hint: ${name}`, { skip: SKIP_UNPLAIN }, () => {
+for (const [name, command, target] of FORBIDDEN_OTHER) {
+  test(`forbidden target, ${name}: still denied, old text intact, hint appended`, { skip: SKIP_UNPLAIN }, () => {
     const { exit, stderr } = run('PowerShell', command);
     assert.strictEqual(exit, 2, stderr);
-    assert.strictEqual(stderr, forbiddenMsg(cmd, target));
+    assert.ok(stderr.startsWith(forbiddenMsg('remove-item', target) + HINT_START.ps), stderr);
+    assert.ok(stderr.endsWith(NEEDS_OWNER), stderr);
   });
+}
+
+// The hook has no try/catch and Claude Code treats exit 1 as non-blocking, so a throw turns a denial into a pass.
+// The hint code must never read payload.cwd: with a malformed cwd these denials stay denials (exit 2, not 1).
+const MALFORMED_CWD = [5, [], {}];
+const CWD_PROBES = [
+  ['PowerShell', 'Remove-Item -Recurse -Force *'],
+  ['PowerShell', 'Set-Location ..; Remove-Item -Recurse ..'],
+  ['Bash', 'find x -delete'],
+];
+for (const cwd of MALFORMED_CWD) {
+  for (const [tool, command] of CWD_PROBES) {
+    test(`malformed cwd ${JSON.stringify(cwd)}: ${command} is still denied`, () => {
+      const { exit, stderr } = run(tool, command, cwd);
+      assert.strictEqual(exit, 2, stderr);
+    });
+  }
 }
